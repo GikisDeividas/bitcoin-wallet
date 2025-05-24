@@ -1081,10 +1081,93 @@ export default function BitcoinWallet() {
     const [showSeedInput, setShowSeedInput] = useState(false)
     const [txResult, setTxResult] = useState<any>(null)
     const [error, setError] = useState('')
+    const [addressError, setAddressError] = useState('')
+    const [estimatedFee, setEstimatedFee] = useState(0)
+
+    // Validate Bitcoin address format and network compatibility
+    const validateAddress = (address: string) => {
+      if (!address.trim()) {
+        setAddressError('')
+        return false
+      }
+
+      const network = activeWallet?.network || 'mainnet'
+      
+      // Address format validation
+      const testnetP2PKH = /^[mn][a-km-zA-HJ-NP-Z1-9]{25,34}$/
+      const testnetBech32 = /^tb1[a-z0-9]{39,59}$/
+      const mainnetP2PKH = /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/
+      const mainnetBech32 = /^bc1[a-z0-9]{39,59}$/
+      
+      const isTestnetAddress = testnetP2PKH.test(address) || testnetBech32.test(address)
+      const isMainnetAddress = mainnetP2PKH.test(address) || mainnetBech32.test(address)
+      
+      if (network === 'testnet' && isMainnetAddress) {
+        setAddressError('Cannot send to mainnet address from testnet wallet')
+        return false
+      }
+      
+      if (network === 'mainnet' && isTestnetAddress) {
+        setAddressError('Cannot send to testnet address from mainnet wallet')
+        return false
+      }
+      
+      if (!isTestnetAddress && !isMainnetAddress) {
+        setAddressError('Invalid Bitcoin address format')
+        return false
+      }
+
+      // Check if sending to same address
+      if (address === activeWallet?.address) {
+        setAddressError('Cannot send to your own address')
+        return false
+      }
+      
+      setAddressError('')
+      return true
+    }
+
+    // Estimate transaction fee
+    const estimateTransactionFee = async () => {
+      if (!activeWallet || !amount) return
+
+      try {
+        const { getBlockchainService } = await import('@/lib/blockchain-service')
+        const service = getBlockchainService(activeWallet.network || 'mainnet')
+        const utxos = await service.getAddressUTXOs(activeWallet.address)
+        
+        // Simple fee estimation: assume 1 input + 2 outputs (recipient + change)
+        const estimatedSize = (utxos.length * 148) + (2 * 34) + 10 // rough estimate in bytes
+        const estimatedFeeAmount = (estimatedSize * fee) / 100000000 // Convert to BTC
+        
+        setEstimatedFee(estimatedFeeAmount)
+      } catch (error) {
+        console.error('Fee estimation failed:', error)
+      }
+    }
+
+    // Update fee estimation when amount or fee rate changes
+    React.useEffect(() => {
+      estimateTransactionFee()
+    }, [amount, fee, activeWallet])
 
     const sendTransaction = async () => {
       if (!activeWallet || !mnemonic.trim()) {
         setError('Please enter your seed phrase')
+        return
+      }
+
+      // Validate address before sending
+      if (!validateAddress(recipientAddress)) {
+        setError('Please fix the address error before sending')
+        return
+      }
+
+      const amountBTC = useUSD && bitcoinPrice ? parseFloat(amountUSD) / bitcoinPrice : parseFloat(amount)
+      
+      // Check if amount + estimated fee exceeds balance
+      if (amountBTC + estimatedFee > activeWallet.balance) {
+        setError(`Insufficient funds. Balance: ${activeWallet.balance.toFixed(6)} BTC, Required: ${(amountBTC + estimatedFee).toFixed(6)} BTC (including estimated fee)`)
         return
       }
 
@@ -1096,11 +1179,10 @@ export default function BitcoinWallet() {
         const { isValidMnemonic } = await import('@/lib/bitcoin-wallet')
         
         if (!isValidMnemonic(mnemonic)) {
-          throw new Error('Invalid seed phrase')
+          throw new Error('Invalid seed phrase format')
         }
 
         const signer = createTransactionSigner(activeWallet.network || 'mainnet')
-        const amountBTC = useUSD && bitcoinPrice ? parseFloat(amountUSD) / bitcoinPrice : parseFloat(amount)
         
         const signedTx = await signer.createAndSignTransaction(
           mnemonic,
@@ -1115,7 +1197,7 @@ export default function BitcoinWallet() {
         const service = getBlockchainService(activeWallet.network || 'mainnet')
         const txid = await service.broadcastTransaction(signedTx.txHex)
 
-        setTxResult({ txid, amount: amountBTC, recipient: recipientAddress })
+        setTxResult({ txid, amount: amountBTC, recipient: recipientAddress, fee: signedTx.fee / 100000000 })
         
         // Clear sensitive data
         setMnemonic('')
@@ -1123,7 +1205,7 @@ export default function BitcoinWallet() {
         setAmount('')
         setAmountUSD('')
 
-        // Refresh wallet balance
+        // Refresh wallet balance after a delay
         setTimeout(() => {
           if (activeWallet) {
             service.getAddressBalance(activeWallet.address).then(balance => {
@@ -1133,20 +1215,38 @@ export default function BitcoinWallet() {
               setWallets(updatedWallets)
               setSelectedWallet({ ...activeWallet, balance: balance.total })
               walletStorage.saveWallets(updatedWallets)
-            })
+            }).catch(console.error)
           }
         }, 2000)
 
       } catch (error) {
         console.error('Transaction failed:', error)
-        setError(error instanceof Error ? error.message : 'Transaction failed')
+        const errorMessage = error instanceof Error ? error.message : 'Transaction failed'
+        
+        // Provide more helpful error messages
+        if (errorMessage.includes('Insufficient funds')) {
+          setError('Insufficient funds for this transaction including network fees')
+        } else if (errorMessage.includes('No UTXOs')) {
+          setError('No available funds to spend. Please wait for previous transactions to confirm.')
+        } else if (errorMessage.includes('Invalid address')) {
+          setError('Invalid recipient address format')
+        } else if (errorMessage.includes('broadcast')) {
+          setError('Failed to broadcast transaction. Please check your network connection and try again.')
+        } else {
+          setError(errorMessage)
+        }
       } finally {
         setIsSending(false)
         setMnemonic('')
       }
     }
 
-    const canSend = recipientAddress.trim() && amount && parseFloat(amount) > 0 && activeWallet && parseFloat(amount) <= activeWallet.balance
+    const canSend = recipientAddress.trim() && 
+                   amount && 
+                   parseFloat(amount) > 0 && 
+                   activeWallet && 
+                   parseFloat(amount) <= activeWallet.balance &&
+                   !addressError
 
     if (!activeWallet) {
       return (
@@ -1177,6 +1277,10 @@ export default function BitcoinWallet() {
                 <div className="flex justify-between">
                   <span className="text-gray-500">Amount</span>
                   <span className="font-medium">{txResult.amount.toFixed(6)} BTC</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Fee</span>
+                  <span className="font-medium">{txResult.fee.toFixed(6)} BTC</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">TX ID</span>
@@ -1226,9 +1330,17 @@ export default function BitcoinWallet() {
               type="text"
               placeholder="Bitcoin address"
               value={recipientAddress}
-              onChange={(e) => setRecipientAddress(e.target.value)}
-              className="w-full text-sm bg-transparent border-0 outline-0 font-mono placeholder-gray-400"
+              onChange={(e) => {
+                setRecipientAddress(e.target.value)
+                validateAddress(e.target.value)
+              }}
+              className={`w-full text-sm bg-transparent border-0 outline-0 font-mono placeholder-gray-400 ${
+                addressError ? 'text-red-600' : ''
+              }`}
             />
+            {addressError && (
+              <p className="text-red-500 text-xs mt-1">{addressError}</p>
+            )}
           </div>
 
           {/* Amount */}
@@ -1279,6 +1391,11 @@ export default function BitcoinWallet() {
             {amount && bitcoinPrice && (
               <div className="text-xs text-gray-500 mt-1">
                 ≈ {useUSD ? `${parseFloat(amount).toFixed(6)} BTC` : formatCurrency(parseFloat(amount) * bitcoinPrice)}
+                {estimatedFee > 0 && (
+                  <span className="ml-2 text-orange-500">
+                    + {estimatedFee.toFixed(6)} BTC fee
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -1308,7 +1425,7 @@ export default function BitcoinWallet() {
             </div>
           </div>
 
-          {/* Seed Input Toggle */}
+          {/* Send Button */}
           {canSend && !showSeedInput && (
             <button
               onClick={() => setShowSeedInput(true)}

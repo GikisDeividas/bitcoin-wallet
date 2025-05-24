@@ -27,7 +27,7 @@ import {
 import { useBitcoinPrice } from "@/hooks/useBitcoinPrice"
 import { useCurrencyRates } from "@/hooks/useCurrencyRates"
 import { walletStorage } from "@/lib/storage"
-import type { WalletData } from "@/types/wallet"
+import type { WalletData, WalletTransaction } from "@/types/wallet"
 import Image from 'next/image'
 
 type PageType = 'home' | 'wallet' | 'send' | 'receive' | 'settings' | 'add-wallet' | 'pin-setup'
@@ -84,11 +84,19 @@ export default function BitcoinWallet() {
           wallets.map(async (wallet) => {
             try {
               const service = getBlockchainService(wallet.network || 'mainnet')
-              const balance = await service.getAddressBalance(wallet.address)
+              
+              // Fetch both balance and transaction history
+              const [balance, transactions] = await Promise.all([
+                service.getAddressBalance(wallet.address),
+                service.getAddressTransactions(wallet.address)
+              ])
+              
+              console.log(`📊 Wallet ${wallet.name}: ${balance.total.toFixed(6)} BTC, ${transactions.length} transactions`)
               
               return {
                 ...wallet,
-                balance: balance.total
+                balance: balance.total,
+                transactions: transactions.slice(0, 50) // Keep last 50 transactions
               }
             } catch (error) {
               console.error(`Failed to refresh wallet ${wallet.name}:`, error)
@@ -97,12 +105,18 @@ export default function BitcoinWallet() {
           })
         )
         
-        // Only update if balances actually changed
-        const hasChanges = updatedWallets.some((wallet, index) => 
-          wallet.balance !== wallets[index].balance
-        )
+        // Check if any data actually changed (balance or transactions)
+        const hasChanges = updatedWallets.some((wallet, index) => {
+          const oldWallet = wallets[index]
+          return (
+            wallet.balance !== oldWallet.balance ||
+            wallet.transactions?.length !== oldWallet.transactions?.length ||
+            (wallet.transactions?.[0]?.id !== oldWallet.transactions?.[0]?.id)
+          )
+        })
         
         if (hasChanges) {
+          console.log('💾 Updating wallets with fresh blockchain data')
           setWallets(updatedWallets)
           walletStorage.saveWallets(updatedWallets)
           
@@ -111,9 +125,11 @@ export default function BitcoinWallet() {
             const updated = updatedWallets.find(w => w.id === selectedWallet.id)
             if (updated) setSelectedWallet(updated)
           }
+        } else {
+          console.log('✅ No changes detected, keeping current data')
         }
       } catch (error) {
-        console.error('Failed to refresh balances:', error)
+        console.error('Failed to refresh blockchain data:', error)
       } finally {
         setIsRefreshing(false)
       }
@@ -274,7 +290,50 @@ export default function BitcoinWallet() {
 
         {/* Recent Transactions */}
         <div className="mt-6">
-          <h3 className="text-gray-900 text-sm font-medium mb-3 px-1">Recent</h3>
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h3 className="text-gray-900 text-sm font-medium">Recent</h3>
+            <button
+              onClick={() => {
+                // Trigger a manual refresh of the current wallet
+                if (activeWallet) {
+                  console.log('🔄 Manual refresh requested for', activeWallet.name)
+                  const refreshWallet = async () => {
+                    try {
+                      const { getBlockchainService } = await import('@/lib/blockchain-service')
+                      const service = getBlockchainService(activeWallet.network || 'mainnet')
+                      const [balance, transactions] = await Promise.all([
+                        service.getAddressBalance(activeWallet.address),
+                        service.getAddressTransactions(activeWallet.address)
+                      ])
+                      
+                      const updatedWallet = {
+                        ...activeWallet,
+                        balance: balance.total,
+                        transactions: transactions.slice(0, 50)
+                      }
+                      
+                      const updatedWallets = wallets.map(w => 
+                        w.id === activeWallet.id ? updatedWallet : w
+                      )
+                      
+                      setWallets(updatedWallets)
+                      setSelectedWallet(updatedWallet)
+                      walletStorage.saveWallets(updatedWallets)
+                      
+                      console.log('✅ Manual refresh completed:', transactions.length, 'transactions found')
+                    } catch (error) {
+                      console.error('❌ Manual refresh failed:', error)
+                    }
+                  }
+                  refreshWallet()
+                }
+              }}
+              className="p-1 rounded-lg hover:bg-gray-100 active:scale-95 transition-all"
+              aria-label="Refresh transactions"
+            >
+              <RefreshCw className={`w-4 h-4 text-gray-400 hover:text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
           <div className="space-y-2">
             {activeWallet.transactions?.slice(0, 5).map((tx, i) => (
               <div key={i} className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 shadow-sm border border-gray-100">
@@ -1301,6 +1360,36 @@ export default function BitcoinWallet() {
           fee: signedTx.fee / 100000000 
         })
         
+        // Store the sent transaction locally
+        const sentTransaction: WalletTransaction = {
+          id: signedTx.txid,
+          type: 'sent',
+          amount: amountBTC,
+          date: new Date().toISOString(),
+          status: 'pending', // Will be updated when blockchain confirms
+          from: activeWallet.address,
+          to: recipientAddress,
+          txHash: signedTx.txid
+        }
+        
+        // Update wallet with new transaction and reduced balance
+        const estimatedNewBalance = activeWallet.balance - amountBTC - (signedTx.fee / 100000000)
+        const updatedWallet = {
+          ...activeWallet,
+          balance: Math.max(0, estimatedNewBalance), // Prevent negative balance
+          transactions: [sentTransaction, ...(activeWallet.transactions || [])].slice(0, 50) // Keep last 50 transactions
+        }
+        
+        // Update wallets array
+        const updatedWallets = wallets.map(w => 
+          w.id === activeWallet.id ? updatedWallet : w
+        )
+        setWallets(updatedWallets)
+        setSelectedWallet(updatedWallet)
+        walletStorage.saveWallets(updatedWallets)
+        
+        console.log('💾 Stored transaction locally:', sentTransaction)
+        
         // Clear sensitive data only on success
         setMnemonic('')
         setRecipientAddress('')
@@ -1308,20 +1397,40 @@ export default function BitcoinWallet() {
         setAmountUSD('')
         setShowSeedInput(false) // Hide seed input on success
 
-        // Refresh wallet balance after a delay
-        setTimeout(() => {
-          if (activeWallet) {
+        // Refresh actual balance and transaction history from blockchain after a delay
+        setTimeout(async () => {
+          console.log('🔄 Refreshing blockchain data after transaction...')
+          try {
             const service = getBlockchainService(activeWallet.network || 'mainnet')
-            service.getAddressBalance(activeWallet.address).then(balance => {
-              const updatedWallets = wallets.map(w => 
-                w.id === activeWallet.id ? { ...w, balance: balance.total } : w
-              )
-              setWallets(updatedWallets)
-              setSelectedWallet({ ...activeWallet, balance: balance.total })
-              walletStorage.saveWallets(updatedWallets)
-            }).catch(console.error)
+            
+            // Fetch updated balance
+            const balance = await service.getAddressBalance(activeWallet.address)
+            
+            // Fetch real transaction history
+            const realTransactions = await service.getAddressTransactions(activeWallet.address)
+            console.log('📜 Fetched real transaction history:', realTransactions.length, 'transactions')
+            
+            // Update wallet with real blockchain data
+            const refreshedWallet = {
+              ...activeWallet,
+              balance: balance.total,
+              transactions: realTransactions.slice(0, 50) // Keep last 50 transactions
+            }
+            
+            const refreshedWallets = wallets.map(w => 
+              w.id === activeWallet.id ? refreshedWallet : w
+            )
+            
+            setWallets(refreshedWallets)
+            setSelectedWallet(refreshedWallet)
+            walletStorage.saveWallets(refreshedWallets)
+            
+            console.log('✅ Blockchain data refreshed successfully')
+          } catch (error) {
+            console.error('⚠️ Failed to refresh blockchain data:', error)
+            // Keep local data if blockchain refresh fails
           }
-        }, 2000)
+        }, 5000) // Wait 5 seconds for transaction to propagate
 
       } catch (error) {
         console.error('❌ Transaction failed with full error details:', error)

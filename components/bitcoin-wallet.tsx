@@ -1171,6 +1171,8 @@ export default function BitcoinWallet() {
     }, [amount, activeWallet])
 
     const sendTransaction = async () => {
+      console.log('🚀 sendTransaction started')
+      
       if (!activeWallet || !mnemonic.trim()) {
         setError('Please enter your seed phrase')
         return
@@ -1183,6 +1185,12 @@ export default function BitcoinWallet() {
       }
 
       const amountBTC = useUSD && bitcoinPrice ? parseFloat(amountUSD) / bitcoinPrice : parseFloat(amount)
+      console.log('💰 Transaction details:', {
+        amountBTC,
+        recipientAddress,
+        estimatedFee,
+        walletBalance: activeWallet.balance
+      })
       
       // Check if amount + estimated fee exceeds balance
       if (amountBTC + estimatedFee > activeWallet.balance) {
@@ -1194,15 +1202,21 @@ export default function BitcoinWallet() {
       setError('')
       
       try {
+        console.log('🔍 Importing transaction signer...')
         const { createTransactionSigner } = await import('@/lib/transaction-signer')
+        
+        console.log('🔍 Importing wallet functions...')
         const { isValidMnemonic } = await import('@/lib/bitcoin-wallet')
         
+        console.log('🔐 Validating mnemonic...')
         if (!isValidMnemonic(mnemonic)) {
           throw new Error('Invalid seed phrase format')
         }
 
+        console.log('⚙️ Creating transaction signer...')
         const signer = createTransactionSigner(activeWallet.network || 'mainnet')
         
+        console.log('📝 Creating and signing transaction...')
         const signedTx = await signer.createAndSignTransaction(
           mnemonic,
           activeWallet.derivationPath || "m/44'/0'/0'/0/0",
@@ -1212,17 +1226,22 @@ export default function BitcoinWallet() {
           activeWallet.address
         )
 
+        console.log('✅ Transaction signed successfully:', signedTx.txid)
+
+        console.log('📡 Broadcasting transaction...')
         const { getBlockchainService } = await import('@/lib/blockchain-service')
         const service = getBlockchainService(activeWallet.network || 'mainnet')
         const txid = await service.broadcastTransaction(signedTx.txHex)
 
+        console.log('🎉 Transaction broadcast successful:', txid)
         setTxResult({ txid, amount: amountBTC, recipient: recipientAddress, fee: signedTx.fee / 100000000 })
         
-        // Clear sensitive data
+        // Clear sensitive data only on success
         setMnemonic('')
         setRecipientAddress('')
         setAmount('')
         setAmountUSD('')
+        setShowSeedInput(false) // Hide seed input on success
 
         // Refresh wallet balance after a delay
         setTimeout(() => {
@@ -1239,8 +1258,11 @@ export default function BitcoinWallet() {
         }, 2000)
 
       } catch (error) {
-        console.error('Transaction failed:', error)
+        console.error('❌ Transaction failed with full error details:', error)
+        console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+        
         const errorMessage = error instanceof Error ? error.message : 'Transaction failed'
+        console.log('💬 Error message to show user:', errorMessage)
         
         // Provide more helpful error messages
         if (errorMessage.includes('Insufficient funds')) {
@@ -1253,12 +1275,17 @@ export default function BitcoinWallet() {
           setError('Failed to broadcast transaction. Please check your network connection and try again.')
         } else if (errorMessage.includes('hmacSha256Sync')) {
           setError('Cryptographic error. Please refresh the page and try again.')
+        } else if (errorMessage.includes('Invalid seed phrase')) {
+          setError('Invalid seed phrase. Please check your seed phrase and try again.')
+        } else if (errorMessage.includes('decode')) {
+          setError('Failed to decode address. Please check the recipient address.')
         } else {
-          setError(errorMessage)
+          setError(`Transaction failed: ${errorMessage}`)
         }
       } finally {
         setIsSending(false)
-        setMnemonic('')
+        // Don't clear mnemonic here automatically to prevent the disappearing issue
+        console.log('🏁 Transaction process completed')
       }
     }
 

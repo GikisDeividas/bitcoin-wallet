@@ -104,40 +104,63 @@ function reverseBytes(bytes: Uint8Array): Uint8Array {
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
 function base58Decode(s: string): Uint8Array {
-  let num = BigInt(0)
-  const base = BigInt(58)
-  
-  for (let i = 0; i < s.length; i++) {
-    const char = s[i]
-    const charIndex = BASE58_ALPHABET.indexOf(char)
-    if (charIndex === -1) throw new Error('Invalid base58 character')
-    num = num * base + BigInt(charIndex)
+  try {
+    let num = BigInt(0)
+    const base = BigInt(58)
+    
+    for (let i = 0; i < s.length; i++) {
+      const char = s[i]
+      const charIndex = BASE58_ALPHABET.indexOf(char)
+      if (charIndex === -1) throw new Error(`Invalid base58 character: ${char}`)
+      num = num * base + BigInt(charIndex)
+    }
+    
+    // Convert to bytes
+    const bytes: number[] = []
+    while (num > 0) {
+      bytes.unshift(Number(num % BigInt(256)))
+      num = num / BigInt(256)
+    }
+    
+    // Add leading zeros
+    for (let i = 0; i < s.length && s[i] === '1'; i++) {
+      bytes.unshift(0)
+    }
+    
+    return new Uint8Array(bytes)
+  } catch (error) {
+    console.error('Base58 decode error:', error)
+    throw new Error(`Failed to decode base58 string: ${s}`)
   }
-  
-  // Convert to bytes
-  const bytes: number[] = []
-  while (num > 0) {
-    bytes.unshift(Number(num % BigInt(256)))
-    num = num / BigInt(256)
-  }
-  
-  // Add leading zeros
-  for (let i = 0; i < s.length && s[i] === '1'; i++) {
-    bytes.unshift(0)
-  }
-  
-  return new Uint8Array(bytes)
 }
 
 function decodeAddress(address: string, network: 'testnet' | 'mainnet'): Uint8Array {
   try {
+    console.log('🔍 Decoding address:', address, 'for network:', network)
+    
+    if (!address || typeof address !== 'string') {
+      throw new Error('Address must be a non-empty string')
+    }
+    
     const decoded = base58Decode(address)
-    if (decoded.length !== 25) throw new Error('Invalid address length')
+    if (decoded.length !== 25) {
+      throw new Error(`Invalid address length: ${decoded.length}, expected 25`)
+    }
+    
+    const version = decoded[0]
+    const expectedVersions = network === 'testnet' ? [0x6f, 0x71] : [0x00, 0x05]
+    
+    if (!expectedVersions.includes(version)) {
+      throw new Error(`Invalid address version ${version} for ${network} network`)
+    }
     
     // Remove version byte and checksum to get the hash160
-    return decoded.slice(1, 21)
+    const hash160 = decoded.slice(1, 21)
+    console.log('✅ Address decoded successfully, hash160 length:', hash160.length)
+    return hash160
   } catch (error) {
-    throw new Error('Invalid Bitcoin address format')
+    console.error('Address decode error:', error)
+    throw new Error(`Invalid Bitcoin address: ${address} - ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
@@ -156,33 +179,51 @@ export class TransactionSigner {
     let keys: any = null
     
     try {
+      console.log('🔧 Transaction Signer: Starting transaction creation')
+      console.log('📍 Parameters:', {
+        recipientAddress,
+        amount,
+        feeRate,
+        walletAddress,
+        network: this.network,
+        derivationPath
+      })
+
       // 🔑 TEMPORARY: Derive keys from mnemonic
+      console.log('🔑 Deriving keys from mnemonic...')
       keys = await deriveKeysFromMnemonic(mnemonic, derivationPath, this.network)
       
       // Verify the derived address matches wallet address
       if (keys.address !== walletAddress) {
-        throw new Error('Derived address does not match wallet address')
+        throw new Error(`Derived address ${keys.address} does not match wallet address ${walletAddress}`)
       }
+      console.log('✅ Address verification passed')
 
       // Get UTXOs for the address
+      console.log('📊 Fetching UTXOs for address:', walletAddress)
       const blockchainService = getBlockchainService(this.network)
       const utxos = await blockchainService.getAddressUTXOs(walletAddress)
       
       if (utxos.length === 0) {
         throw new Error('No UTXOs available for transaction')
       }
+      console.log(`✅ Found ${utxos.length} UTXOs`)
 
       // Convert amount from BTC to satoshis
       const amountSatoshis = Math.floor(amount * 100000000)
+      console.log(`💰 Amount: ${amount} BTC = ${amountSatoshis} satoshis`)
       
       // Select UTXOs and calculate fee
+      console.log('⚖️ Selecting UTXOs and calculating fees...')
       const { selectedUtxos, totalInput, fee } = this.selectUtxos(utxos, amountSatoshis, feeRate)
       
       if (totalInput < amountSatoshis + fee) {
-        throw new Error('Insufficient funds for transaction')
+        throw new Error(`Insufficient funds: need ${amountSatoshis + fee} satoshis, have ${totalInput} satoshis`)
       }
+      console.log(`✅ Selected ${selectedUtxos.length} UTXOs, total input: ${totalInput} satoshis, fee: ${fee} satoshis`)
 
       // Create transaction using pure noble implementation
+      console.log('🏗️ Creating unsigned transaction structure...')
       const unsignedTx: UnsignedTransaction = {
         inputs: selectedUtxos.map(utxo => ({
           txid: utxo.txid,
@@ -203,6 +244,7 @@ export class TransactionSigner {
       // Add change output if needed
       const change = totalInput - amountSatoshis - fee
       if (change > 546) { // Dust threshold
+        console.log(`💱 Adding change output: ${change} satoshis`)
         unsignedTx.outputs.push({
           address: walletAddress,
           value: change
@@ -210,16 +252,31 @@ export class TransactionSigner {
       }
 
       // Sign the transaction
+      console.log('✍️ Signing transaction...')
       const signedTx = await this.signTransaction(unsignedTx, keys.privateKey)
+      
+      console.log('✅ Transaction created successfully:', {
+        txid: signedTx.txid,
+        size: signedTx.size,
+        fee: signedTx.fee
+      })
       
       return signedTx
 
     } catch (error) {
-      console.error('Transaction creation failed:', error)
+      console.error('❌ Transaction creation failed:', error)
+      console.error('❌ Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack',
+        recipientAddress,
+        amount,
+        walletAddress
+      })
       throw error
     } finally {
       // 🔥 SECURITY: Clear sensitive data from memory
       if (keys) {
+        console.log('🧹 Clearing sensitive data from memory')
         clearSensitiveData(keys)
         keys = null
       }

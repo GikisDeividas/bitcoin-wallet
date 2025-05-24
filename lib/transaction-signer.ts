@@ -189,77 +189,121 @@ export class TransactionSigner {
         derivationPath
       })
 
-      // 🔑 TEMPORARY: Derive keys from mnemonic
-      console.log('🔑 Deriving keys from mnemonic...')
-      keys = await deriveKeysFromMnemonic(mnemonic, derivationPath, this.network)
-      
-      // Verify the derived address matches wallet address
-      if (keys.address !== walletAddress) {
-        throw new Error(`Derived address ${keys.address} does not match wallet address ${walletAddress}`)
+      // Phase 1: Key Derivation
+      console.log('🔑 PHASE 1: Deriving keys from mnemonic...')
+      try {
+        keys = await deriveKeysFromMnemonic(mnemonic, derivationPath, this.network)
+        console.log('✅ Key derivation successful')
+      } catch (error) {
+        console.error('❌ PHASE 1 FAILED: Key derivation error:', error)
+        throw new Error(`Key derivation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
-      console.log('✅ Address verification passed')
-
-      // Get UTXOs for the address
-      console.log('📊 Fetching UTXOs for address:', walletAddress)
-      const blockchainService = getBlockchainService(this.network)
-      const utxos = await blockchainService.getAddressUTXOs(walletAddress)
       
-      if (utxos.length === 0) {
-        throw new Error('No UTXOs available for transaction')
+      // Phase 2: Address Verification
+      console.log('🔑 PHASE 2: Verifying derived address...')
+      try {
+        if (keys.address !== walletAddress) {
+          throw new Error(`Derived address ${keys.address} does not match wallet address ${walletAddress}`)
+        }
+        console.log('✅ Address verification passed')
+      } catch (error) {
+        console.error('❌ PHASE 2 FAILED: Address verification error:', error)
+        throw error
       }
-      console.log(`✅ Found ${utxos.length} UTXOs`)
 
-      // Convert amount from BTC to satoshis
+      // Phase 3: UTXO Fetching
+      console.log('📊 PHASE 3: Fetching UTXOs for address:', walletAddress)
+      let utxos: UTXOInfo[]
+      try {
+        const blockchainService = getBlockchainService(this.network)
+        utxos = await blockchainService.getAddressUTXOs(walletAddress)
+        
+        if (utxos.length === 0) {
+          throw new Error('No UTXOs available for transaction')
+        }
+        console.log(`✅ Found ${utxos.length} UTXOs:`, utxos.map(u => ({ txid: u.txid.slice(0,8) + '...', vout: u.vout, value: u.value })))
+      } catch (error) {
+        console.error('❌ PHASE 3 FAILED: UTXO fetching error:', error)
+        throw new Error(`UTXO fetching failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+
+      // Phase 4: Amount and Fee Calculation
+      console.log('💰 PHASE 4: Calculating amounts and fees...')
       const amountSatoshis = Math.floor(amount * 100000000)
       console.log(`💰 Amount: ${amount} BTC = ${amountSatoshis} satoshis`)
       
-      // Select UTXOs and calculate fee
-      console.log('⚖️ Selecting UTXOs and calculating fees...')
-      const { selectedUtxos, totalInput, fee } = this.selectUtxos(utxos, amountSatoshis, feeRate)
-      
-      if (totalInput < amountSatoshis + fee) {
-        throw new Error(`Insufficient funds: need ${amountSatoshis + fee} satoshis, have ${totalInput} satoshis`)
-      }
-      console.log(`✅ Selected ${selectedUtxos.length} UTXOs, total input: ${totalInput} satoshis, fee: ${fee} satoshis`)
-
-      // Create transaction using pure noble implementation
-      console.log('🏗️ Creating unsigned transaction structure...')
-      const unsignedTx: UnsignedTransaction = {
-        inputs: selectedUtxos.map(utxo => ({
-          txid: utxo.txid,
-          vout: utxo.vout,
-          value: utxo.value,
-          scriptPubKey: this.createP2PKHScript(walletAddress)
-        })),
-        outputs: [
-          {
-            address: recipientAddress,
-            value: amountSatoshis
-          }
-        ],
-        fee,
-        network: this.network
+      let selectedUtxos: UTXOInfo[], totalInput: number, fee: number
+      try {
+        const utxoSelection = this.selectUtxos(utxos, amountSatoshis, feeRate)
+        selectedUtxos = utxoSelection.selectedUtxos
+        totalInput = utxoSelection.totalInput
+        fee = utxoSelection.fee
+        
+        if (totalInput < amountSatoshis + fee) {
+          throw new Error(`Insufficient funds: need ${amountSatoshis + fee} satoshis, have ${totalInput} satoshis`)
+        }
+        console.log(`✅ Selected ${selectedUtxos.length} UTXOs, total input: ${totalInput} satoshis, fee: ${fee} satoshis`)
+      } catch (error) {
+        console.error('❌ PHASE 4 FAILED: UTXO selection error:', error)
+        throw new Error(`UTXO selection failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
 
-      // Add change output if needed
-      const change = totalInput - amountSatoshis - fee
-      if (change > 546) { // Dust threshold
-        console.log(`💱 Adding change output: ${change} satoshis`)
-        unsignedTx.outputs.push({
-          address: walletAddress,
-          value: change
+      // Phase 5: Transaction Structure Creation
+      console.log('🏗️ PHASE 5: Creating unsigned transaction structure...')
+      let unsignedTx: UnsignedTransaction
+      try {
+        unsignedTx = {
+          inputs: selectedUtxos.map(utxo => ({
+            txid: utxo.txid,
+            vout: utxo.vout,
+            value: utxo.value,
+            scriptPubKey: this.createP2PKHScript(walletAddress)
+          })),
+          outputs: [
+            {
+              address: recipientAddress,
+              value: amountSatoshis
+            }
+          ],
+          fee,
+          network: this.network
+        }
+
+        // Add change output if needed
+        const change = totalInput - amountSatoshis - fee
+        if (change > 546) { // Dust threshold
+          console.log(`💱 Adding change output: ${change} satoshis`)
+          unsignedTx.outputs.push({
+            address: walletAddress,
+            value: change
+          })
+        }
+        
+        console.log('✅ Transaction structure created:', {
+          inputs: unsignedTx.inputs.length,
+          outputs: unsignedTx.outputs.length,
+          totalFee: unsignedTx.fee
         })
+      } catch (error) {
+        console.error('❌ PHASE 5 FAILED: Transaction structure creation error:', error)
+        throw new Error(`Transaction structure creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
 
-      // Sign the transaction
-      console.log('✍️ Signing transaction...')
-      const signedTx = await this.signTransaction(unsignedTx, keys.privateKey)
-      
-      console.log('✅ Transaction created successfully:', {
-        txid: signedTx.txid,
-        size: signedTx.size,
-        fee: signedTx.fee
-      })
+      // Phase 6: Transaction Signing
+      console.log('✍️ PHASE 6: Signing transaction...')
+      let signedTx: SignedTransaction
+      try {
+        signedTx = await this.signTransaction(unsignedTx, keys.privateKey)
+        console.log('✅ Transaction signed successfully:', {
+          txid: signedTx.txid,
+          size: signedTx.size,
+          fee: signedTx.fee,
+          txHex: signedTx.txHex.slice(0, 100) + '...'
+        })
+      } catch (error) {
+        console.error('❌ PHASE 6 FAILED: Transaction signing error:', error)
+        throw new Error(`Transaction signing failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
       
       return signedTx
 
@@ -361,11 +405,25 @@ export class TransactionSigner {
       const txForSigning = this.createTxForSigning(unsignedTx, i, input.scriptPubKey)
       const hash = sha256(sha256(txForSigning))
       
+      console.log(`🔐 Signing input ${i}, hash:`, bytesToHex(hash))
+      
       // Sign with private key using noble
       const signature = await secp256k1.sign(hash, privateKeyBytes)
       
+      // Ensure signature is canonical (s value in lower half)
+      const canonicalSignature = signature.normalizeS()
+      
+      // Convert to compact format first (64 bytes: 32-byte r + 32-byte s)
+      const compactSig = canonicalSignature.toCompactRawBytes()
+      
+      // Bitcoin requires DER format, so we need to encode it properly
+      const derSignature = this.encodeToDER(compactSig)
+      
+      console.log(`✅ Input ${i} signature DER length:`, derSignature.length)
+      console.log(`✅ Input ${i} signature DER:`, bytesToHex(derSignature))
+      
       signedInputs.push({
-        signature: signature.toCompactRawBytes(),
+        signature: derSignature,
         publicKey: publicKeyBytes
       })
     }
@@ -386,6 +444,59 @@ export class TransactionSigner {
       virtualSize: Math.ceil(txBytes.length), // Simplified calculation
       fee: unsignedTx.fee
     }
+  }
+
+  // Convert compact signature (64 bytes) to DER format
+  private encodeToDER(compactSig: Uint8Array): Uint8Array {
+    // Extract r and s from compact signature
+    const r = compactSig.slice(0, 32)
+    const s = compactSig.slice(32, 64)
+    
+    // Encode r as DER integer
+    const rDer = this.encodeIntegerDER(r)
+    
+    // Encode s as DER integer  
+    const sDer = this.encodeIntegerDER(s)
+    
+    // Build full DER signature
+    // Format: 0x30 [total-length] [rDer] [sDer]
+    const totalLength = rDer.length + sDer.length
+    const derSig = new Uint8Array(2 + totalLength)
+    
+    derSig[0] = 0x30 // SEQUENCE tag
+    derSig[1] = totalLength // total length
+    derSig.set(rDer, 2)
+    derSig.set(sDer, 2 + rDer.length)
+    
+    return derSig
+  }
+
+  // Encode a 32-byte bigint as DER INTEGER
+  private encodeIntegerDER(value: Uint8Array): Uint8Array {
+    // Remove leading zeros but keep at least one byte
+    let start = 0
+    while (start < value.length - 1 && value[start] === 0) {
+      start++
+    }
+    
+    const trimmed = value.slice(start)
+    
+    // If the first bit is set, we need to prepend 0x00 to make it positive
+    const needsPadding = (trimmed[0] & 0x80) !== 0
+    const length = trimmed.length + (needsPadding ? 1 : 0)
+    
+    const result = new Uint8Array(2 + length)
+    result[0] = 0x02 // INTEGER tag
+    result[1] = length // length
+    
+    if (needsPadding) {
+      result[2] = 0x00
+      result.set(trimmed, 3)
+    } else {
+      result.set(trimmed, 2)
+    }
+    
+    return result
   }
 
   private createRawTransaction(unsignedTx: UnsignedTransaction): Uint8Array {

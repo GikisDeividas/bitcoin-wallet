@@ -1201,40 +1201,105 @@ export default function BitcoinWallet() {
       setIsSending(true)
       setError('')
       
+      let signedTx: any = null
+      
       try {
-        console.log('🔍 Importing transaction signer...')
+        // PHASE A: Import and Setup
+        console.log('🔍 PHASE A: Importing modules...')
         const { createTransactionSigner } = await import('@/lib/transaction-signer')
-        
-        console.log('🔍 Importing wallet functions...')
         const { isValidMnemonic } = await import('@/lib/bitcoin-wallet')
+        const { getBlockchainService } = await import('@/lib/blockchain-service')
+        console.log('✅ PHASE A: Modules imported successfully')
         
-        console.log('🔐 Validating mnemonic...')
+        // PHASE B: Validation
+        console.log('🔐 PHASE B: Validating mnemonic...')
         if (!isValidMnemonic(mnemonic)) {
           throw new Error('Invalid seed phrase format')
         }
+        console.log('✅ PHASE B: Mnemonic validation passed')
 
-        console.log('⚙️ Creating transaction signer...')
+        // PHASE C: Transaction Creation and Signing
+        console.log('⚙️ PHASE C: Creating transaction signer...')
         const signer = createTransactionSigner(activeWallet.network || 'mainnet')
         
-        console.log('📝 Creating and signing transaction...')
-        const signedTx = await signer.createAndSignTransaction(
-          mnemonic,
-          activeWallet.derivationPath || "m/44'/0'/0'/0/0",
-          recipientAddress,
-          amountBTC,
-          fee,
-          activeWallet.address
-        )
+        console.log('📝 PHASE C: Creating and signing transaction...')
+        try {
+          signedTx = await signer.createAndSignTransaction(
+            mnemonic,
+            activeWallet.derivationPath || "m/44'/0'/0'/0/0",
+            recipientAddress,
+            amountBTC,
+            fee,
+            activeWallet.address
+          )
+          console.log('✅ PHASE C: Transaction created and signed successfully:', {
+            txid: signedTx.txid,
+            size: signedTx.size,
+            fee: signedTx.fee
+          })
+        } catch (createError) {
+          console.error('❌ PHASE C FAILED: Transaction creation/signing error:', createError)
+          throw new Error(`Transaction creation failed: ${createError instanceof Error ? createError.message : 'Unknown error'}`)
+        }
 
-        console.log('✅ Transaction signed successfully:', signedTx.txid)
+        // PHASE D: Broadcasting to Network
+        console.log('📡 PHASE D: Broadcasting transaction to Bitcoin network...')
+        console.log('📡 Network:', activeWallet.network)
+        console.log('📡 Transaction hex length:', signedTx.txHex.length)
+        console.log('📡 Transaction hex preview:', signedTx.txHex.slice(0, 100) + '...')
+        
+        try {
+          const service = getBlockchainService(activeWallet.network || 'mainnet')
+          console.log('📡 Blockchain service created, attempting broadcast...')
+          
+          const txid = await service.broadcastTransaction(signedTx.txHex)
+          console.log('🎉 PHASE D: Transaction broadcast successful!')
+          console.log('🎉 Returned TXID:', txid)
+          console.log('🎉 Expected TXID:', signedTx.txid)
+          
+          // Verify the returned TXID matches our calculated one
+          if (txid !== signedTx.txid) {
+            console.warn('⚠️ TXID mismatch:', { returned: txid, calculated: signedTx.txid })
+          }
+          
+        } catch (broadcastError) {
+          console.error('❌ PHASE D FAILED: Broadcast error details:', broadcastError)
+          console.error('❌ Broadcast error type:', typeof broadcastError)
+          console.error('❌ Broadcast error message:', broadcastError instanceof Error ? broadcastError.message : 'Unknown error')
+          console.error('❌ Broadcast error stack:', broadcastError instanceof Error ? broadcastError.stack : 'No stack')
+          
+          // Enhanced broadcast error handling
+          const errorMessage = broadcastError instanceof Error ? broadcastError.message : 'Unknown broadcast error'
+          
+          if (errorMessage.includes('network') || errorMessage.includes('timeout') || errorMessage.includes('fetch')) {
+            throw new Error('Network connection failed. Please check your internet connection and try again.')
+          } else if (errorMessage.includes('invalid') || errorMessage.includes('bad-txns')) {
+            throw new Error('Invalid transaction format. This could be a signing issue.')
+          } else if (errorMessage.includes('insufficient fee') || errorMessage.includes('fee too low')) {
+            throw new Error('Transaction fee too low. Please try again with a higher fee.')
+          } else if (errorMessage.includes('dust') || errorMessage.includes('amount too small')) {
+            throw new Error('Transaction amount too small (below dust threshold).')
+          } else if (errorMessage.includes('double spend') || errorMessage.includes('already spent')) {
+            throw new Error('Funds already spent in another transaction. Please refresh and try again.')
+          } else if (errorMessage.includes('mempool full') || errorMessage.includes('too many')) {
+            throw new Error('Bitcoin network is congested. Please try again in a few minutes.')
+          } else if (errorMessage.includes('400') || errorMessage.includes('Bad Request')) {
+            throw new Error('Invalid transaction data. Please check all transaction details.')
+          } else if (errorMessage.includes('500') || errorMessage.includes('server')) {
+            throw new Error('Bitcoin network service temporarily unavailable. Please try again.')
+          } else {
+            throw new Error(`Broadcast failed: ${errorMessage}`)
+          }
+        }
 
-        console.log('📡 Broadcasting transaction...')
-        const { getBlockchainService } = await import('@/lib/blockchain-service')
-        const service = getBlockchainService(activeWallet.network || 'mainnet')
-        const txid = await service.broadcastTransaction(signedTx.txHex)
-
-        console.log('🎉 Transaction broadcast successful:', txid)
-        setTxResult({ txid, amount: amountBTC, recipient: recipientAddress, fee: signedTx.fee / 100000000 })
+        // SUCCESS - Update UI
+        console.log('🎉 Transaction completed successfully!')
+        setTxResult({ 
+          txid: signedTx.txid, 
+          amount: amountBTC, 
+          recipient: recipientAddress, 
+          fee: signedTx.fee / 100000000 
+        })
         
         // Clear sensitive data only on success
         setMnemonic('')
@@ -1246,6 +1311,7 @@ export default function BitcoinWallet() {
         // Refresh wallet balance after a delay
         setTimeout(() => {
           if (activeWallet) {
+            const service = getBlockchainService(activeWallet.network || 'mainnet')
             service.getAddressBalance(activeWallet.address).then(balance => {
               const updatedWallets = wallets.map(w => 
                 w.id === activeWallet.id ? { ...w, balance: balance.total } : w
@@ -1264,19 +1330,31 @@ export default function BitcoinWallet() {
         const errorMessage = error instanceof Error ? error.message : 'Transaction failed'
         console.log('💬 Error message to show user:', errorMessage)
         
-        // Provide more helpful error messages
-        if (errorMessage.includes('Insufficient funds')) {
+        // Provide more helpful error messages based on the enhanced error handling
+        if (errorMessage.includes('Network connection failed')) {
+          setError('Network connection failed. Please check your internet connection and try again.')
+        } else if (errorMessage.includes('Invalid transaction format')) {
+          setError('Transaction signing failed. Please check your seed phrase and try again.')
+        } else if (errorMessage.includes('fee too low')) {
+          setError('Transaction fee too low. Please wait a moment and try again for updated fees.')
+        } else if (errorMessage.includes('already spent')) {
+          setError('Funds already spent. Please refresh your wallet and try again.')
+        } else if (errorMessage.includes('network is congested')) {
+          setError('Bitcoin network is busy. Please try again in a few minutes.')
+        } else if (errorMessage.includes('Insufficient funds')) {
           setError('Insufficient funds for this transaction including network fees')
         } else if (errorMessage.includes('No UTXOs')) {
           setError('No available funds to spend. Please wait for previous transactions to confirm.')
         } else if (errorMessage.includes('Invalid address')) {
           setError('Invalid recipient address format')
-        } else if (errorMessage.includes('broadcast')) {
-          setError('Failed to broadcast transaction. Please check your network connection and try again.')
-        } else if (errorMessage.includes('hmacSha256Sync')) {
-          setError('Cryptographic error. Please refresh the page and try again.')
         } else if (errorMessage.includes('Invalid seed phrase')) {
           setError('Invalid seed phrase. Please check your seed phrase and try again.')
+        } else if (errorMessage.includes('Key derivation failed')) {
+          setError('Failed to generate keys from seed phrase. Please check your seed phrase.')
+        } else if (errorMessage.includes('UTXO fetching failed')) {
+          setError('Failed to fetch wallet balance. Please check your network connection.')
+        } else if (errorMessage.includes('Transaction creation failed')) {
+          setError('Failed to create transaction. Please try again or contact support.')
         } else if (errorMessage.includes('decode')) {
           setError('Failed to decode address. Please check the recipient address.')
         } else {

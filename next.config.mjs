@@ -24,7 +24,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https:",
               "font-src 'self' data:",
-              "connect-src 'self' https://blockstream.info https://*.blockstream.info https://mempool.space https://*.mempool.space https://api.blockcypher.com https://api.coingecko.com", // Allow blockchain API calls
+              "connect-src 'self' https://blockstream.info https://*.blockstream.info https://mempool.space https://*.mempool.space https://api.blockcypher.com https://api.coingecko.com https://api.exchangerate-api.com https://open.er-api.com", // Allow blockchain AND exchange rate API calls
               "frame-ancestors 'none'",
               "base-uri 'self'"
             ].join('; ')

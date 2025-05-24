@@ -1,13 +1,46 @@
 "use client"
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Send, Home, Wallet, Download, Settings, ArrowUpRight, ArrowDownLeft, MoreHorizontal, RefreshCw, X, Plus, Edit, Trash2, QrCode, ArrowLeft, Check } from "lucide-react"
+
+import React, { useState, useEffect, useRef } from 'react'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { 
+  Home, 
+  Send, 
+  Download, 
+  Settings, 
+  Wallet, 
+  Plus, 
+  ArrowLeft, 
+  RefreshCw, 
+  Copy, 
+  Check, 
+  Eye, 
+  EyeOff, 
+  Trash2, 
+  Shield, 
+  Info, 
+  X, 
+  MoreHorizontal,
+  CircleAlert,
+  ArrowUpRight,
+  ArrowDownLeft,
+  QrCode
+} from 'lucide-react'
+
+// Import Bitcoin wallet functions statically to avoid CSP eval issues
+import { 
+  generateBitcoinWallet, 
+  importWalletFromMnemonic, 
+  isValidMnemonic, 
+  exportPrivateKey, 
+  demonstrateKeyRegeneration 
+} from '@/lib/bitcoin-wallet'
+import { createTransactionSigner } from '@/lib/transaction-signer'
+import { getBlockchainService } from '@/lib/blockchain-service'
 import { useBitcoinPrice } from "@/hooks/useBitcoinPrice"
 import { useCurrencyRates } from "@/hooks/useCurrencyRates"
 import { walletStorage, type TransactionData } from "@/lib/storage"
 import type { WalletData } from "@/types/wallet"
-import { getBlockchainService } from "@/lib/blockchain-service"
 import QRCode from 'qrcode'
 import Image from 'next/image'
 
@@ -878,7 +911,7 @@ export default function BitcoinWallet() {
       setIsExporting(true)
       
       try {
-        const { exportPrivateKey } = await import('@/lib/bitcoin-wallet')
+        // Direct function call - static import at top of file
         const keys = await exportPrivateKey(
           exportMnemonic,
           wallet.derivationPath,
@@ -1307,9 +1340,6 @@ export default function BitcoinWallet() {
         const btcAmount = amountType === 'btc' ? parseFloat(amount) : (bitcoinPrice ? parseFloat(amount) / bitcoinPrice : 0)
 
         // 🌐 Real blockchain transaction
-        const { createTransactionSigner } = await import('@/lib/transaction-signer')
-        const { getBlockchainService } = await import('@/lib/blockchain-service')
-        
         const signer = createTransactionSigner(activeWallet.network)
         const blockchainService = getBlockchainService(activeWallet.network)
         
@@ -2189,8 +2219,6 @@ export default function BitcoinWallet() {
                   const seedPhrase = prompt('Enter a seed phrase to verify (⚠️ NEVER enter your real seed phrase here!)');
                   if (!seedPhrase) return;
                   
-                  const { isValidMnemonic, demonstrateKeyRegeneration } = await import('@/lib/bitcoin-wallet')
-                  
                   console.clear()
                   console.log('🔍 VERIFYING SEED PHRASE LEGITIMACY\n')
                   
@@ -2304,8 +2332,7 @@ export default function BitcoinWallet() {
       if (walletMethod === 'generate') {
         setIsGenerating(true)
         try {
-          // Import the bitcoin wallet functions
-          const { generateBitcoinWallet } = await import('@/lib/bitcoin-wallet')
+          // Direct function call - static import at top of file
           const network = (settings.network as 'testnet' | 'mainnet') || 'mainnet'
           const wallet = await generateBitcoinWallet(network)
           setGeneratedWallet(wallet)
@@ -2353,8 +2380,6 @@ export default function BitcoinWallet() {
       
       setIsGenerating(true)
       try {
-        const { importWalletFromMnemonic, isValidMnemonic } = await import('@/lib/bitcoin-wallet')
-        
         if (!isValidMnemonic(importSeed)) {
           throw new Error('Invalid seed phrase format')
         }

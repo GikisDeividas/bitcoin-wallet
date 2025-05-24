@@ -9,6 +9,7 @@ import { walletStorage, type TransactionData } from "@/lib/storage"
 import type { WalletData } from "@/types/wallet"
 import { getBlockchainService } from "@/lib/blockchain-service"
 import QRCode from 'qrcode'
+import Image from 'next/image'
 
 type PageType = 'home' | 'wallet' | 'send' | 'receive' | 'settings' | 'add-wallet'
 
@@ -16,15 +17,12 @@ export default function BitcoinWallet() {
   const { price: bitcoinPrice, change24h, isLoading, error, lastUpdated } = useBitcoinPrice()
   const { rates: currencyRates } = useCurrencyRates()
   
-  // State management
-  const [wallets, setWallets] = useState<WalletData[]>([])
-  const [selectedWallet, setSelectedWallet] = useState<WalletData | null>(null)
   const [currentPage, setCurrentPage] = useState<PageType>('home')
   const [isTransitioning, setIsTransitioning] = useState(false)
+  const [selectedWallet, setSelectedWallet] = useState<WalletData | null>(null)
+  const [wallets, setWallets] = useState<WalletData[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  
-  // PIN and Settings state
   const [isLocked, setIsLocked] = useState(false)
   const [enteredPin, setEnteredPin] = useState('')
   const [pinError, setPinError] = useState('')
@@ -34,7 +32,7 @@ export default function BitcoinWallet() {
     autoLockTime: 5,
     showBalance: true,
     currency: 'USD',
-    network: 'testnet',
+    network: 'mainnet', // Changed default to mainnet only
     notifications: true
   })
 
@@ -44,20 +42,9 @@ export default function BitcoinWallet() {
   // 🌐 Refresh wallet data from blockchain
   const refreshWalletData = async (wallet: WalletData): Promise<WalletData> => {
     try {
-      const blockchainService = getBlockchainService(wallet.network)
+      const blockchainService = getBlockchainService('mainnet') // Always use mainnet
       
-      // Check if wallet network matches current setting
-      if (wallet.network !== settings.network) {
-        console.warn(`Wallet ${wallet.name} is on ${wallet.network} but app is set to ${settings.network}`)
-        // Return wallet with zero balance but preserve structure
-        return {
-          ...wallet,
-          balance: 0,
-          transactions: []
-        }
-      }
-      
-      console.log(`💫 Fetching data for ${wallet.name} (${wallet.network})...`)
+      console.log(`💫 Fetching data for ${wallet.name} (mainnet)...`)
       console.log(`Address: ${wallet.address}`)
       
       // Set a timeout for the entire operation
@@ -102,7 +89,7 @@ export default function BitcoinWallet() {
     if (wallets.length === 0) return
     
     setIsRefreshing(true)
-    console.log(`💫 Refreshing ${wallets.length} wallets on ${settings.network}...`)
+    console.log(`💫 Refreshing ${wallets.length} wallets on mainnet...`)
     
     try {
       // Process wallets in parallel for speed
@@ -136,9 +123,11 @@ export default function BitcoinWallet() {
   useEffect(() => {
     // Only access localStorage on client side
     if (typeof window !== 'undefined') {
-      const savedSettings = localStorage.getItem('bitwallet-settings')
+      const savedSettings = localStorage.getItem('rabbit-wallet-settings') // Updated storage key
       if (savedSettings) {
         const parsedSettings = JSON.parse(savedSettings)
+        // Force mainnet for existing users
+        parsedSettings.network = 'mainnet'
         setSettings(parsedSettings)
         
         // If PIN is enabled, lock the app initially
@@ -148,7 +137,7 @@ export default function BitcoinWallet() {
       }
       
       // Check if user has seen seed phrase reminder
-      const hasSeenReminder = localStorage.getItem('bitwallet-seed-reminder')
+      const hasSeenReminder = localStorage.getItem('rabbit-wallet-seed-reminder') // Updated storage key
       if (!hasSeenReminder && wallets.length === 0) {
         setShowSeedReminder(true)
       }
@@ -161,15 +150,20 @@ export default function BitcoinWallet() {
     const savedWallets = walletStorage.loadWallets()
     
     if (savedWallets.length > 0) {
-      setWallets(savedWallets)
-      setSelectedWallet(savedWallets[0])
+      // Force all loaded wallets to mainnet
+      const mainnetWallets = savedWallets.map(wallet => ({
+        ...wallet,
+        network: 'mainnet' as const
+      }))
+      setWallets(mainnetWallets)
+      setSelectedWallet(mainnetWallets[0])
       console.log('📱 Loaded cached wallet data instantly')
     }
     
     setIsInitialized(true)
   }, [])
 
-  // 🌐 Auto-refresh wallet data when wallets are loaded or network changes
+  // 🌐 Auto-refresh wallet data when wallets are loaded
   useEffect(() => {
     if (isInitialized && wallets.length > 0 && !isLocked) {
       console.log('🔄 Starting immediate background refresh...')
@@ -177,16 +171,16 @@ export default function BitcoinWallet() {
       // Start immediate refresh in background (non-blocking)
       refreshAllWallets()
       
-      // Set up slower auto-refresh: 10 seconds for testnet, 30 seconds for mainnet
-      const refreshInterval = settings.network === 'testnet' ? 10000 : 30000
+      // Set up auto-refresh every 30 seconds for mainnet
+      const refreshInterval = 30000
       const autoRefreshInterval = setInterval(() => {
-        console.log(`🔄 Auto-refreshing wallet data (${settings.network}) every ${refreshInterval/1000}s...`)
+        console.log(`🔄 Auto-refreshing wallet data (mainnet) every ${refreshInterval/1000}s...`)
         refreshAllWallets()
       }, refreshInterval)
       
       return () => clearInterval(autoRefreshInterval)
     }
-  }, [isInitialized, settings.network, isLocked])
+  }, [isInitialized, isLocked])
 
   // Handle PIN verification
   const handlePinVerification = () => {
@@ -260,7 +254,7 @@ export default function BitcoinWallet() {
   const updateSettings = (newSettings: any) => {
     setSettings(newSettings)
     if (typeof window !== 'undefined') {
-      localStorage.setItem('bitwallet-settings', JSON.stringify(newSettings))
+      localStorage.setItem('rabbit-wallet-settings', JSON.stringify(newSettings))
     }
   }
 
@@ -358,38 +352,67 @@ export default function BitcoinWallet() {
           <div className="w-full h-full bg-gray-50 rounded-[2.5rem] overflow-hidden relative flex flex-col">
             <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-6 bg-black rounded-b-2xl z-10"></div>
             
-            <header className="flex items-center justify-between px-4 py-3 pt-8 bg-gray-50 flex-shrink-0">
+            <header className="flex items-center justify-between px-4 py-4 bg-white border-b border-gray-100 rounded-t-[2.5rem]">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-cyan-400 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">₿</span>
+                {currentPage !== 'home' && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-8 h-8 mr-2"
+                    onClick={() => navigateToPage('home')}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </Button>
+                )}
+                <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center">
+                  <Image 
+                    src="/images/rabbit-logo.svg" 
+                    alt="Rabbit" 
+                    width={20} 
+                    height={20} 
+                    className="text-white"
+                  />
                 </div>
                 <div>
-                <h1 className="text-lg font-medium text-gray-900">BitWallet</h1>
-              </div>
+                  <h1 className="text-lg font-medium text-gray-900">
+                    {currentPage === 'home' ? 'Rabbit' : 
+                     currentPage === 'wallet' ? 'My Wallets' :
+                     currentPage === 'send' ? 'Send Bitcoin' :
+                     currentPage === 'receive' ? 'Receive Bitcoin' :
+                     currentPage === 'settings' ? 'Settings' : 
+                     currentPage === 'add-wallet' ? 'Add Wallet' : 'Rabbit'}
+                  </h1>
+                </div>
               </div>
             </header>
 
             <div className="flex-1 flex items-center justify-center px-6">
               <div className="text-center max-w-md">
-                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Wallet className="w-10 h-10 text-gray-400" />
+                <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Image 
+                    src="/images/rabbit-logo.svg" 
+                    alt="Rabbit" 
+                    width={32} 
+                    height={32} 
+                    className="text-orange-600"
+                  />
                 </div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">Welcome to BitWallet</h2>
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">Welcome to Rabbit</h2>
                 <p className="text-gray-600 mb-6 text-sm">Get started by creating your first Bitcoin wallet. Your keys, your Bitcoin.</p>
                 
                 <button
                   onClick={() => navigateToPage('add-wallet')}
-                  className="w-full bg-cyan-50 border border-cyan-200 rounded-lg p-4 mb-6 hover:bg-cyan-100 transition-colors cursor-pointer"
+                  className="w-full bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 rounded-lg p-4 mb-6 hover:from-orange-100 hover:to-orange-200 transition-colors cursor-pointer"
                 >
-                  <p className="text-cyan-800 text-sm">
-                    👆 <strong>Tap to create or import a wallet</strong>
+                  <p className="text-orange-800 text-sm">
+                    🐰 <strong>Tap to create or import a wallet</strong>
                   </p>
                 </button>
                 
                 <div className="text-xs text-gray-500 space-y-1">
                   <p>• Create a new wallet with secure seed phrase</p>
                   <p>• Import existing wallet with seed phrase</p>
-                  <p>• Add watch-only addresses</p>
+                  <p>• Real Bitcoin transactions on mainnet</p>
                 </div>
               </div>
             </div>
@@ -435,11 +458,11 @@ export default function BitcoinWallet() {
             
             <div className="flex-1 flex items-center justify-center px-6">
               <div className="text-center max-w-md">
-                <div className="w-20 h-20 bg-cyan-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <span className="text-cyan-600 font-bold text-2xl">🔒</span>
+                <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <span className="text-orange-600 font-bold text-2xl">🔒</span>
                 </div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">Enter PIN</h2>
-                <p className="text-gray-600 mb-6 text-sm">Enter your 4-digit PIN to unlock BitWallet</p>
+                <p className="text-gray-600 mb-6 text-sm">Enter your 4-digit PIN to unlock Rabbit</p>
                 
                 {pinError && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
@@ -527,7 +550,7 @@ export default function BitcoinWallet() {
                   onClick={() => {
                     setShowSeedReminder(false)
                     if (typeof window !== 'undefined') {
-                      localStorage.setItem('bitwallet-seed-reminder', 'seen')
+                      localStorage.setItem('rabbit-wallet-seed-reminder', 'seen')
                     }
                   }}
                 >
@@ -554,7 +577,7 @@ export default function BitcoinWallet() {
             isTransitioning ? 'blur-sm opacity-50 scale-95' : 'blur-0 opacity-100 scale-100'
           }`}>
             {/* Header */}
-            <header className="flex items-center justify-between px-4 py-3 pt-8 bg-gray-50 flex-shrink-0">
+            <header className="flex items-center justify-between px-4 py-4 bg-white border-b border-gray-100 rounded-t-[2.5rem]">
               <div className="flex items-center gap-2">
                 {currentPage !== 'home' && (
                   <Button
@@ -566,24 +589,23 @@ export default function BitcoinWallet() {
                     <ArrowLeft className="w-4 h-4" />
                   </Button>
                 )}
-                <div className="w-8 h-8 bg-cyan-400 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">₿</span>
+                <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center">
+                  <Image 
+                    src="/images/rabbit-logo.svg" 
+                    alt="Rabbit" 
+                    width={20} 
+                    height={20} 
+                    className="text-white"
+                  />
                 </div>
-                {/* Network indicator circle */}
-                <div 
-                  className={`w-3 h-3 rounded-full ${
-                    settings.network === 'mainnet' ? 'bg-green-500' : 'bg-yellow-500'
-                  }`}
-                  title={settings.network === 'mainnet' ? 'Mainnet (Real Bitcoin)' : 'Testnet (Test Bitcoin)'}
-                ></div>
                 <div>
                   <h1 className="text-lg font-medium text-gray-900">
-                    {currentPage === 'home' ? 'BitWallet' : 
+                    {currentPage === 'home' ? 'Rabbit' : 
                      currentPage === 'wallet' ? 'My Wallets' :
                      currentPage === 'send' ? 'Send Bitcoin' :
                      currentPage === 'receive' ? 'Receive Bitcoin' :
                      currentPage === 'settings' ? 'Settings' : 
-                     currentPage === 'add-wallet' ? 'Add Wallet' : 'BitWallet'}
+                     currentPage === 'add-wallet' ? 'Add Wallet' : 'Rabbit'}
                   </h1>
                 </div>
               </div>
@@ -1882,7 +1904,7 @@ export default function BitcoinWallet() {
         {/* Action Buttons */}
         <div className="space-y-3">
           <Button 
-            className="w-full bg-cyan-400 hover:bg-cyan-500 text-white"
+            className="w-full bg-orange-400 hover:bg-orange-500 text-white"
             onClick={() => {
               navigator.clipboard.writeText(activeWallet.address)
               alert('Address copied to clipboard!')
@@ -1895,6 +1917,7 @@ export default function BitcoinWallet() {
             variant="outline"
             className="w-full border-blue-200 text-blue-600 hover:bg-blue-50"
             onClick={() => {
+              const explorerUrl = 'https://blockstream.info'
               const url = `${explorerUrl}/address/${activeWallet.address}`
               window.open(url, '_blank')
             }}
@@ -1902,18 +1925,15 @@ export default function BitcoinWallet() {
             🔍 Verify on Blockchain Explorer
           </Button>
           
-          <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-3">
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
-              <div className="w-4 h-4 bg-cyan-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-xs font-bold">i</span>
+              <div className="w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center">
+                <span className="text-white text-xs font-bold">₿</span>
               </div>
-              <span className="text-cyan-800 text-sm font-medium">Network Info</span>
+              <span className="text-orange-800 text-sm font-medium">Mainnet Address</span>
             </div>
-            <p className="text-cyan-700 text-xs">
-              {currentNetwork === 'testnet' 
-                ? '🧪 This is a TESTNET address - only send testnet Bitcoin!' 
-                : '💰 This is a MAINNET address - send real Bitcoin here'
-              }
+            <p className="text-orange-700 text-xs">
+              💰 This is a MAINNET address - send real Bitcoin here
             </p>
           </div>
         </div>
@@ -2098,50 +2118,11 @@ export default function BitcoinWallet() {
             <Card className="border-slate-200 rounded-lg">
               <CardContent className="p-4 space-y-4">
                 <div>
-                  <div className="font-medium text-gray-900 text-sm mb-3">Bitcoin Network</div>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs font-bold">i</span>
-                      </div>
-                      <span className="text-blue-800 text-xs font-medium">Network Info</span>
-                    </div>
-                    <p className="text-blue-700 text-xs">
-                      Existing wallets remain on their original network. Switching networks will show them with zero balance until you switch back.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="network"
-                        value="testnet"
-                        checked={settings.network === 'testnet'}
-                        onChange={(e) => handleSettingToggle('network', e.target.value)}
-                        className="w-4 h-4 text-cyan-400"
-                      />
-                      <span className="text-sm text-gray-900">Testnet (Safe for testing)</span>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="network"
-                        value="mainnet"
-                        checked={settings.network === 'mainnet'}
-                        onChange={(e) => handleSettingToggle('network', e.target.value)}
-                        className="w-4 h-4 text-cyan-400"
-                      />
-                      <span className="text-sm text-gray-900">Mainnet (Real Bitcoin)</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2">Display Currency</label>
                   <select
                   value={settings.currency}
                   onChange={(e) => handleSettingToggle('currency', e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                  className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                   aria-label="Select display currency"
                 >
                   <option value="USD">USD ($)</option>
@@ -2178,89 +2159,22 @@ export default function BitcoinWallet() {
         <div>
           <h3 className="text-gray-900 text-sm font-medium mb-3 px-1">About</h3>
           
-          {/* Debug Section */}
-          <Card className="border-slate-200 rounded-xl mb-3">
-            <CardContent className="p-3">
-              <div className="mb-2">
-                <div className="font-medium text-gray-900 text-sm mb-1">Network Debug</div>
-                <div className="text-xs text-gray-600 space-y-1">
-                  <div>Network: <span className="font-mono">{settings.network}</span></div>
-                  <div>Wallet: <span className="font-mono">{activeWallet.network}</span></div>
-                  <div>Address: <span className="font-mono text-xs break-all">{activeWallet.address.slice(0, 20)}...</span></div>
-                  <div>Balance: <span className="font-mono">{activeWallet.balance} BTC</span></div>
-                </div>
-              </div>
-              
-              <div className="space-y-1">
-                <Button
-                  variant="outline"
-                  className="w-full text-xs h-7"
-                  onClick={async () => {
-                    console.clear()
-                    console.log('=== API CONNECTIVITY TEST ===')
-                    
-                    const testUrls = [
-                      'https://blockstream.info/testnet/api/address/mojCANnRJr1v9wvKfYTibm3H1LVNkZMBjr',
-                      'https://mempool.space/testnet/api/address/mojCANnRJr1v9wvKfYTibm3H1LVNkZMBjr',
-                      'https://corsproxy.io/?https://blockstream.info/testnet/api/address/mojCANnRJr1v9wvKfYTibm3H1LVNkZMBjr'
-                    ]
-                    
-                    for (const url of testUrls) {
-                      try {
-                        console.log(`Testing: ${url}`)
-                        const response = await fetch(url, { mode: 'cors' })
-                        console.log(`✅ ${url}: ${response.status} ${response.statusText}`)
-                        if (response.ok) {
-                          const data = await response.json()
-                          console.log(`Balance data:`, data)
-                          break // Stop on first success
-                        }
-                      } catch (error) {
-                        console.log(`❌ ${url}: ${error instanceof Error ? error.message : 'Failed'}`)
-                      }
-                    }
-                  }}
-                >
-                  🌐 Test API Connectivity
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  className="w-full text-xs h-7"
-                  onClick={async () => {
-                    console.clear()
-                    console.log('=== MANUAL WALLET REFRESH TEST ===')
-                    console.log('Current settings:', settings)
-                    console.log('Active wallet:', activeWallet)
-                    
-                    try {
-                      const refreshed = await refreshWalletData(activeWallet)
-                      console.log('Refresh result:', refreshed)
-                      handleUpdateWallet(refreshed)
-                      alert('Check console for refresh details!')
-                    } catch (error) {
-                      console.error('Manual refresh failed:', error)
-                      alert('Refresh failed - check console')
-                    }
-                  }}
-                  disabled={isRefreshing}
-                >
-                  {isRefreshing ? 'Refreshing...' : '🔄 Test Wallet Refresh'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          
           <Card className="border-slate-200 rounded-xl mb-3">
             <CardContent className="p-4">
               <div className="text-center">
-                <div className="w-12 h-12 bg-cyan-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <span className="text-cyan-600 font-bold text-lg">₿</span>
+                <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Image 
+                    src="/images/rabbit-logo.svg" 
+                    alt="Rabbit" 
+                    width={24} 
+                    height={24} 
+                    className="text-orange-600"
+                  />
                 </div>
-                <div className="font-medium text-gray-900">BitWallet</div>
+                <div className="font-medium text-gray-900">Rabbit</div>
                 <div className="text-sm text-gray-500">Version 1.0.0</div>
                 <p className="text-xs text-gray-500 mt-2">
-                  A secure, user-friendly Bitcoin wallet
+                  A secure, user-friendly Bitcoin wallet for real transactions
                 </p>
               </div>
             </CardContent>
@@ -2286,7 +2200,7 @@ export default function BitcoinWallet() {
                   
                   if (isValid) {
                     console.log('\n📋 Testing address generation consistency...')
-                    await demonstrateKeyRegeneration(seedPhrase, settings.network as 'testnet' | 'mainnet')
+                    await demonstrateKeyRegeneration(seedPhrase, 'mainnet')
                     
                     console.log('\n🎯 LEGITIMACY CHECK RESULTS:')
                     console.log('✅ Seed phrase follows BIP39 standard')
@@ -2303,9 +2217,9 @@ export default function BitcoinWallet() {
                 🔍 Verify Seed Phrase Legitimacy
               </Button>
               
-              <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-3 mb-3">
-                <h3 className="font-medium text-cyan-800 mb-2">🧪 Educational Demo</h3>
-                <p className="text-cyan-700 text-xs">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
+                <h3 className="font-medium text-orange-800 mb-2">🐰 Educational Demo</h3>
+                <p className="text-orange-700 text-xs">
                   This button demonstrates how the same seed phrase always generates identical keys, 
                   proving that "burning" keys locally doesn't affect wallet recovery in other apps.
                 </p>
@@ -2318,7 +2232,7 @@ export default function BitcoinWallet() {
                   if (confirm('Are you sure you want to clear all wallet data? This cannot be undone.')) {
                     walletStorage.clearAll()
                     if (typeof window !== 'undefined') {
-                      localStorage.removeItem('bitwallet-settings')
+                      localStorage.removeItem('rabbit-wallet-settings')
                     }
                     setWallets([])
                     setSelectedWallet(null)
@@ -2329,7 +2243,7 @@ export default function BitcoinWallet() {
                       autoLockTime: 5,
                       showBalance: true,
                       currency: 'USD',
-                      network: 'testnet',
+                      network: 'mainnet',
                       notifications: true
                     })
                     window.location.reload()
@@ -2392,7 +2306,7 @@ export default function BitcoinWallet() {
         try {
           // Import the bitcoin wallet functions
           const { generateBitcoinWallet } = await import('@/lib/bitcoin-wallet')
-          const network = (settings.network as 'testnet' | 'mainnet') || 'testnet'
+          const network = (settings.network as 'testnet' | 'mainnet') || 'mainnet'
           const wallet = await generateBitcoinWallet(network)
           setGeneratedWallet(wallet)
           setStep('seed-display')
@@ -2445,7 +2359,7 @@ export default function BitcoinWallet() {
           throw new Error('Invalid seed phrase format')
         }
         
-        const network = (settings.network as 'testnet' | 'mainnet') || 'testnet'
+        const network = (settings.network as 'testnet' | 'mainnet') || 'mainnet'
         const wallet = await importWalletFromMnemonic(importSeed, network)
         createWallet(wallet)
       } catch (error) {

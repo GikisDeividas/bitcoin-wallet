@@ -471,43 +471,43 @@ export default function BitcoinWallet() {
     if (step === 'method') {
       console.log('Rendering method selection')
       return (
-        <div className="space-y-4 pb-2">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Plus className="w-8 h-8 text-orange-600" />
+        <div className="space-y-3 pb-2">
+          <div className="text-center mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Plus className="w-6 h-6 text-cyan-600" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Add New Wallet</h2>
-            <p className="text-gray-600 text-sm">Choose how you'd like to add your wallet:</p>
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Add New Wallet</h2>
+            <p className="text-gray-600 text-xs">Choose how you'd like to add your wallet</p>
           </div>
           
           <Button
             variant="outline"
-            className="w-full p-4 h-auto rounded-lg border-2 hover:border-orange-400 hover:bg-orange-50"
+            className="w-full p-3 h-auto rounded-2xl border border-gray-200 hover:border-cyan-300 hover:bg-cyan-50/50 active:scale-95 transition-all"
             onClick={() => handleMethodSelect('generate')}
           >
             <div className="flex items-center">
-              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mr-4">
-                <Plus className="w-6 h-6 text-orange-600" />
+              <div className="w-10 h-10 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-xl flex items-center justify-center mr-3">
+                <Plus className="w-5 h-5 text-cyan-600" />
               </div>
               <div className="text-left">
-                <div className="font-medium text-gray-900">Create New Wallet</div>
-                <div className="text-sm text-gray-500">Generate a new wallet with secure seed phrase</div>
+                <div className="font-medium text-gray-900 text-sm">Create New Wallet</div>
+                <div className="text-xs text-gray-500">Generate a new wallet with secure seed phrase</div>
               </div>
             </div>
           </Button>
 
           <Button
             variant="outline"
-            className="w-full p-4 h-auto rounded-lg border-2 hover:border-orange-400 hover:bg-orange-50"
+            className="w-full p-3 h-auto rounded-2xl border border-gray-200 hover:border-cyan-300 hover:bg-cyan-50/50 active:scale-95 transition-all"
             onClick={() => handleMethodSelect('import')}
           >
             <div className="flex items-center">
-              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mr-4">
-                <Download className="w-6 h-6 text-gray-600" />
+              <div className="w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center mr-3">
+                <Download className="w-5 h-5 text-gray-600" />
               </div>
               <div className="text-left">
-                <div className="font-medium text-gray-900">Import Existing Wallet</div>
-                <div className="text-sm text-gray-500">Restore wallet using seed phrase</div>
+                <div className="font-medium text-gray-900 text-sm">Import Existing Wallet</div>
+                <div className="text-xs text-gray-500">Restore wallet using seed phrase</div>
               </div>
             </div>
           </Button>
@@ -519,29 +519,29 @@ export default function BitcoinWallet() {
     if (step === 'name') {
       console.log('Rendering name input')
       return (
-        <div className="space-y-4 pb-2">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Wallet className="w-8 h-8 text-orange-600" />
+        <div className="space-y-3 pb-2">
+          <div className="text-center mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Wallet className="w-6 h-6 text-cyan-600" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Name Your Wallet</h2>
-            <p className="text-gray-600 text-sm">Choose a name to identify this wallet</p>
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Name Your Wallet</h2>
+            <p className="text-gray-600 text-xs">Choose a name to identify this wallet</p>
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700 block mb-2">Wallet Name</label>
+            <label className="text-xs font-medium text-gray-700 block mb-2">Wallet Name</label>
             <input
               type="text"
               placeholder="Enter a name for your wallet"
               value={walletName}
               onChange={(e) => setWalletName(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+              className="w-full p-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-white"
               autoFocus
             />
           </div>
 
           <Button
-            className="w-full bg-orange-400 hover:bg-orange-500 text-white rounded-lg h-12"
+            className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white rounded-2xl h-11 text-sm font-medium active:scale-95 transition-all"
             onClick={handleNameSubmit}
             disabled={isGenerating || !walletName.trim()}
           >
@@ -562,23 +562,23 @@ export default function BitcoinWallet() {
     if (step === 'seed-display') {
       console.log('Rendering seed display')
       return (
-        <div className="space-y-4 pb-2">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-8 h-8 text-red-600" />
+        <div className="space-y-3 pb-2">
+          <div className="text-center mb-4">
+            <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Shield className="w-6 h-6 text-red-600" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Your Seed Phrase</h2>
-            <p className="text-gray-600 text-sm">Write down these 12 words in order and store them safely</p>
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Your Seed Phrase</h2>
+            <p className="text-gray-600 text-xs">Write down these 12 words in order and store them safely</p>
           </div>
 
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-3 mb-3">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+              <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
                 <span className="text-white text-xs font-bold">!</span>
               </div>
-              <span className="text-red-800 text-sm font-medium">Critical Security Warning</span>
+              <span className="text-red-800 text-xs font-medium">Critical Security Warning</span>
             </div>
-            <ul className="text-red-700 text-xs space-y-1">
+            <ul className="text-red-700 text-xs space-y-0.5">
               <li>• This is the ONLY way to recover your Bitcoin</li>
               <li>• Anyone with this phrase can steal your funds</li>
               <li>• We never store these words - only you have them</li>
@@ -587,16 +587,16 @@ export default function BitcoinWallet() {
           </div>
 
           {generatedWallet && (
-            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+            <div className="bg-gray-50 rounded-2xl p-3 mb-3">
               <div className="flex justify-between items-center mb-3">
-                <span className="text-sm font-medium text-gray-700">Seed Phrase</span>
+                <span className="text-xs font-medium text-gray-700">Seed Phrase</span>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setSeedVisible(!seedVisible)}
-                  className="text-xs"
+                  className="text-xs h-7 px-2"
                 >
-                  {seedVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {seedVisible ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                   {seedVisible ? 'Hide' : 'Show'}
                 </Button>
               </div>
@@ -604,33 +604,33 @@ export default function BitcoinWallet() {
               {seedVisible ? (
                 <div className="grid grid-cols-3 gap-2 mb-3">
                   {generatedWallet.mnemonic.split(' ').map((word: string, i: number) => (
-                    <div key={i} className="bg-white rounded p-2 text-center border">
+                    <div key={i} className="bg-white rounded-xl p-2 text-center border border-gray-200">
                       <div className="text-xs text-gray-500">{i + 1}</div>
-                      <div className="font-mono text-sm">{word}</div>
+                      <div className="font-mono text-xs font-medium">{word}</div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Eye className="w-8 h-8 mx-auto mb-2" />
-                  <p className="text-sm">Click "Show" to view your seed phrase</p>
+                <div className="text-center py-6 text-gray-500">
+                  <Eye className="w-6 h-6 mx-auto mb-2" />
+                  <p className="text-xs">Click "Show" to view your seed phrase</p>
                 </div>
               )}
 
               <Button
                 variant="outline"
-                className="w-full text-sm"
+                className="w-full text-xs h-9 rounded-xl border-gray-200 hover:bg-gray-100"
                 onClick={handleSeedCopy}
                 disabled={!seedVisible}
               >
                 {copied ? (
                   <>
-                    <Check className="w-4 h-4 mr-2" />
+                    <Check className="w-3 h-3 mr-2" />
                     Copied!
                   </>
                 ) : (
                   <>
-                    <Copy className="w-4 h-4 mr-2" />
+                    <Copy className="w-3 h-3 mr-2" />
                     Copy to Clipboard
                   </>
                 )}
@@ -639,7 +639,7 @@ export default function BitcoinWallet() {
           )}
 
           <Button
-            className="w-full bg-orange-400 hover:bg-orange-500 text-white rounded-lg h-12"
+            className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white rounded-2xl h-11 text-sm font-medium active:scale-95 transition-all"
             onClick={() => setStep('seed-confirm')}
             disabled={!seedVisible}
           >
@@ -656,19 +656,19 @@ export default function BitcoinWallet() {
       const randomIndices = [2, 5, 8] // Check 3rd, 6th, and 9th words
       
       return (
-        <div className="space-y-4 pb-2">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-orange-600" />
+        <div className="space-y-3 pb-2">
+          <div className="text-center mb-4">
+            <div className="w-12 h-12 bg-cyan-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Check className="w-6 h-6 text-cyan-600" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Confirm Your Seed Phrase</h2>
-            <p className="text-gray-600 text-sm">Enter the requested words to verify you wrote them down correctly</p>
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Confirm Your Seed Phrase</h2>
+            <p className="text-gray-600 text-xs">Enter the requested words to verify you wrote them down correctly</p>
           </div>
 
-          <div className="space-y-4 mb-6">
+          <div className="space-y-3 mb-4">
             {randomIndices.map((wordIndex, i) => (
               <div key={i}>
-                <label className="text-sm font-medium text-gray-700 block mb-2">
+                <label className="text-xs font-medium text-gray-700 block mb-1">
                   Word #{wordIndex + 1}
                 </label>
                 <input
@@ -680,19 +680,19 @@ export default function BitcoinWallet() {
                     newWords[i] = e.target.value
                     setConfirmationWords(newWords)
                   }}
-                  className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+                  className="w-full p-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-white"
                 />
               </div>
             ))}
           </div>
 
-          <div className="space-y-3 mb-6">
+          <div className="space-y-2 mb-4">
             {[
               { key: 'stored', text: 'I have written down my seed phrase and stored it safely' },
               { key: 'backup', text: 'I understand this is the only way to recover my wallet' },
               { key: 'responsibility', text: 'I take full responsibility for keeping my seed phrase secure' }
             ].map(({ key, text }) => (
-              <label key={key} className="flex items-start gap-3 cursor-pointer">
+              <label key={key} className="flex items-start gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={confirmationsChecked[key as keyof typeof confirmationsChecked]}
@@ -700,15 +700,15 @@ export default function BitcoinWallet() {
                     ...confirmationsChecked,
                     [key]: e.target.checked
                   })}
-                  className="mt-1 w-4 h-4 text-orange-600 rounded focus:ring-orange-400"
+                  className="mt-0.5 w-4 h-4 text-cyan-600 rounded focus:ring-cyan-400"
                 />
-                <span className="text-sm text-gray-700">{text}</span>
+                <span className="text-xs text-gray-700">{text}</span>
               </label>
             ))}
           </div>
 
           <Button
-            className="w-full bg-orange-400 hover:bg-orange-500 text-white rounded-lg h-12"
+            className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white rounded-2xl h-11 text-sm font-medium active:scale-95 transition-all"
             onClick={handleSeedConfirm}
             disabled={
               !randomIndices.every((index, i) => 
@@ -726,23 +726,23 @@ export default function BitcoinWallet() {
     if (step === 'import-seed') {
       console.log('Rendering import seed')
       return (
-        <div className="space-y-4 pb-2">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Download className="w-8 h-8 text-blue-600" />
+        <div className="space-y-3 pb-2">
+          <div className="text-center mb-4">
+            <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Download className="w-6 h-6 text-blue-600" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Import Wallet</h2>
-            <p className="text-gray-600 text-sm">Enter your existing seed phrase to restore your wallet</p>
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Import Wallet</h2>
+            <p className="text-gray-600 text-xs">Enter your existing seed phrase to restore your wallet</p>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-3">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+              <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
                 <span className="text-white text-xs font-bold">i</span>
               </div>
-              <span className="text-blue-800 text-sm font-medium">Import Instructions</span>
+              <span className="text-blue-800 text-xs font-medium">Import Instructions</span>
             </div>
-            <ul className="text-blue-700 text-xs space-y-1">
+            <ul className="text-blue-700 text-xs space-y-0.5">
               <li>• Enter your 12 or 24 word seed phrase</li>
               <li>• Separate each word with a space</li>
               <li>• Make sure the words are in the correct order</li>
@@ -751,18 +751,18 @@ export default function BitcoinWallet() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700 block mb-2">Seed Phrase</label>
+            <label className="text-xs font-medium text-gray-700 block mb-2">Seed Phrase</label>
             <textarea
               placeholder="Enter your seed phrase (12 or 24 words)..."
               value={importSeed}
               onChange={(e) => setImportSeed(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent font-mono"
-              rows={4}
+              className="w-full p-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent font-mono resize-none bg-white"
+              rows={3}
             />
           </div>
 
           <Button
-            className="w-full bg-orange-400 hover:bg-orange-500 text-white rounded-lg h-12"
+            className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white rounded-2xl h-11 text-sm font-medium active:scale-95 transition-all"
             onClick={handleImportSubmit}
             disabled={isGenerating || !importSeed.trim()}
           >
@@ -782,15 +782,15 @@ export default function BitcoinWallet() {
     // Success step
     if (step === 'success') {
       return (
-        <div className="text-center py-8 pb-2">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Check className="w-8 h-8 text-green-600" />
+        <div className="text-center py-6 pb-2">
+          <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+            <Check className="w-6 h-6 text-green-600" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Wallet Created!</h3>
-          <p className="text-gray-600 text-sm mb-4">Your new wallet "{walletName}" has been added successfully</p>
+          <h3 className="text-base font-semibold text-gray-900 mb-1">Wallet Created!</h3>
+          <p className="text-gray-600 text-xs mb-3">Your new wallet "{walletName}" has been added successfully</p>
           
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-            <p className="text-green-800 text-sm">
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-3 mb-3">
+            <p className="text-green-800 text-xs">
               🎉 You can now send and receive Bitcoin with your new wallet
             </p>
           </div>

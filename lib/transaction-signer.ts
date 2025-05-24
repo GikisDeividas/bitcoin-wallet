@@ -5,6 +5,12 @@ import { getBlockchainService, UTXOInfo } from './blockchain-service'
 import { sha256 } from '@noble/hashes/sha256'
 import * as secp256k1 from '@noble/secp256k1'
 import { hmac } from '@noble/hashes/hmac'
+import * as bitcoin from 'bitcoinjs-lib'
+import { ECPairFactory } from 'ecpair'
+import * as ecc from 'tiny-secp256k1'
+
+// Initialize ECPair with secp256k1 implementation
+const ECPair = ECPairFactory(ecc)
 
 // Configure secp256k1 for browser environment
 if (typeof window !== 'undefined') {
@@ -126,7 +132,11 @@ function reverseBytes(bytes: Uint8Array): Uint8Array {
 }
 
 export class TransactionSigner {
-  constructor(private network: 'testnet' | 'mainnet') {}
+  private bitcoinNetwork: bitcoin.Network
+
+  constructor(private network: 'testnet' | 'mainnet') {
+    this.bitcoinNetwork = network === 'testnet' ? bitcoin.networks.testnet : bitcoin.networks.bitcoin
+  }
 
   // 🔑 SECURE: Create and sign transaction with temporary key derivation
   async createAndSignTransaction(
@@ -166,43 +176,53 @@ export class TransactionSigner {
         throw new Error('Insufficient funds for transaction')
       }
 
-      // Create transaction inputs and outputs
-      const inputs: TransactionInput[] = selectedUtxos.map(utxo => ({
-        txid: utxo.txid,
-        vout: utxo.vout,
-        value: utxo.value,
-        scriptPubKey: this.createP2PKHScript(keys.address)
-      }))
+      // Create transaction using bitcoinjs-lib
+      const tx = new bitcoin.Transaction()
+      tx.version = 2
+      
+      // Add inputs
+      for (const utxo of selectedUtxos) {
+        tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout)
+      }
 
-      const outputs: TransactionOutput[] = [
-        {
-          address: recipientAddress,
-          value: amountSatoshis
-        }
-      ]
+      // Add recipient output
+      tx.addOutput(bitcoin.address.toOutputScript(recipientAddress, this.bitcoinNetwork), amountSatoshis)
 
       // Add change output if needed
       const change = totalInput - amountSatoshis - fee
       if (change > 546) { // Dust threshold
-        outputs.push({
-          address: walletAddress,
-          value: change
-        })
+        tx.addOutput(bitcoin.address.toOutputScript(walletAddress, this.bitcoinNetwork), change)
       }
 
-      // Create unsigned transaction
-      const unsignedTx: UnsignedTransaction = {
-        inputs,
-        outputs,
-        fee,
-        network: this.network
-      }
-
-      // Sign the transaction
-      const signedTx = await this.signTransaction(unsignedTx, keys.privateKey)
+      // Sign inputs
+      const keyPair = ECPair.fromPrivateKey(Buffer.from(keys.privateKey, 'hex'))
+      const hashType = bitcoin.Transaction.SIGHASH_ALL
       
-      return signedTx
+      for (let i = 0; i < selectedUtxos.length; i++) {
+        const utxo = selectedUtxos[i]
+        const scriptPubKey = bitcoin.address.toOutputScript(walletAddress, this.bitcoinNetwork)
+        const signatureHash = tx.hashForSignature(i, scriptPubKey, hashType)
+        const signature = keyPair.sign(signatureHash)
+        const scriptSig = bitcoin.script.compile([
+          Buffer.concat([signature, Buffer.from([hashType])]),
+          Buffer.from(keyPair.publicKey)
+        ])
+        tx.setInputScript(i, scriptSig)
+      }
+      
+      const txHex = tx.toHex()
+      
+      return {
+        txHex,
+        txid: tx.getId(),
+        size: tx.byteLength(),
+        virtualSize: tx.virtualSize(),
+        fee
+      }
 
+    } catch (error) {
+      console.error('Transaction creation failed:', error)
+      throw error
     } finally {
       // 🔥 SECURITY: Clear sensitive data from memory
       if (keys) {
@@ -217,6 +237,35 @@ export class TransactionSigner {
     }
   }
 
+  private async getRawTransaction(txid: string): Promise<string> {
+    try {
+      // For now, create a simple mock raw transaction since we're using PSBT
+      // This is a temporary workaround - real implementation would fetch from blockchain
+      console.warn(`Warning: Using mock raw transaction for ${txid}`)
+      
+      // Create a minimal valid raw transaction structure
+      // In a real implementation, this would fetch the actual transaction from the blockchain
+      const mockRawTx = '0200000001' + // version
+                       txid.match(/.{2}/g)?.reverse().join('') + // reversed txid  
+                       '00000000' + // vout (placeholder)
+                       '1976a914' + // scriptSig start (P2PKH)
+                       '0'.repeat(40) + // placeholder pubkey hash
+                       '88ac' + // scriptSig end
+                       'ffffffff' + // sequence
+                       '01' + // output count
+                       '0000000000000000' + // value (placeholder)
+                       '1976a914' + // scriptPubKey start
+                       '0'.repeat(40) + // placeholder address hash
+                       '88ac' + // scriptPubKey end
+                       '00000000' // locktime
+      
+      return mockRawTx
+    } catch (error) {
+      console.error('Failed to get raw transaction:', error)
+      throw new Error('Failed to fetch transaction data for UTXO')
+    }
+  }
+
   private selectUtxos(utxos: UTXOInfo[], targetAmount: number, feeRate: number): {
     selectedUtxos: UTXOInfo[]
     totalInput: number
@@ -228,158 +277,25 @@ export class TransactionSigner {
     const selectedUtxos: UTXOInfo[] = []
     let totalInput = 0
     
-    // Estimate transaction size (inputs * 148 + outputs * 34 + 10 base bytes)
-    const estimatedSize = (selectedUtxos.length * 148) + (2 * 34) + 10 // Assume 2 outputs max
-    let fee = Math.ceil(estimatedSize * feeRate)
-    
     for (const utxo of sortedUtxos) {
       selectedUtxos.push(utxo)
       totalInput += utxo.value
       
-      // Recalculate fee with current number of inputs
-      const currentSize = (selectedUtxos.length * 148) + (2 * 34) + 10
-      fee = Math.ceil(currentSize * feeRate)
+      // Calculate fee with current number of inputs
+      // P2PKH inputs: 148 bytes, outputs: 34 bytes, base: 10 bytes
+      const estimatedSize = (selectedUtxos.length * 148) + (2 * 34) + 10
+      const fee = Math.ceil(estimatedSize * feeRate)
       
       if (totalInput >= targetAmount + fee) {
-        break
+        return { selectedUtxos, totalInput, fee }
       }
     }
     
+    // If we get here, insufficient funds
+    const estimatedSize = (selectedUtxos.length * 148) + (2 * 34) + 10
+    const fee = Math.ceil(estimatedSize * feeRate)
+    
     return { selectedUtxos, totalInput, fee }
-  }
-
-  private createP2PKHScript(address: string): string {
-    // This is a simplified P2PKH script creation
-    // In a production app, you'd want proper address parsing
-    return 'p2pkh' // Placeholder for now
-  }
-
-  private async signTransaction(unsignedTx: UnsignedTransaction, privateKey: string): Promise<SignedTransaction> {
-    // Create the raw transaction
-    const rawTx = this.createRawTransaction(unsignedTx)
-    
-    // For each input, create signature
-    const signedInputs: Uint8Array[] = []
-    
-    for (let i = 0; i < unsignedTx.inputs.length; i++) {
-      const signature = await this.signInput(rawTx, i, unsignedTx.inputs[i], privateKey)
-      signedInputs.push(signature)
-    }
-
-    // Assemble final transaction
-    const signedTxHex = this.assembleFinalTransaction(unsignedTx, signedInputs, privateKey)
-    
-    // Calculate transaction hash
-    const txBytes = hexToBytes(signedTxHex)
-    const hash1 = sha256(txBytes)
-    const hash2 = sha256(hash1)
-    const txid = bytesToHex(reverseBytes(hash2))
-
-    return {
-      txHex: signedTxHex,
-      txid,
-      size: txBytes.length,
-      virtualSize: Math.ceil(txBytes.length), // Simplified, real calculation is more complex
-      fee: unsignedTx.fee
-    }
-  }
-
-  private createRawTransaction(unsignedTx: UnsignedTransaction): Uint8Array {
-    const parts: Uint8Array[] = []
-    
-    // Version (4 bytes, little-endian)
-    parts.push(serializeUint32LE(2))
-    
-    // Input count
-    parts.push(serializeVarInt(unsignedTx.inputs.length))
-    
-    // Inputs
-    for (const input of unsignedTx.inputs) {
-      // Previous transaction hash (32 bytes, reversed)
-      parts.push(reverseBytes(hexToBytes(input.txid)))
-      
-      // Previous output index (4 bytes, little-endian)
-      parts.push(serializeUint32LE(input.vout))
-      
-      // Script length (empty for unsigned)
-      parts.push(new Uint8Array([0]))
-      
-      // Sequence (4 bytes, little-endian)
-      parts.push(serializeUint32LE(0xffffffff))
-    }
-    
-    // Output count
-    parts.push(serializeVarInt(unsignedTx.outputs.length))
-    
-    // Outputs
-    for (const output of unsignedTx.outputs) {
-      // Value (8 bytes, little-endian)
-      parts.push(serializeUint64LE(output.value))
-      
-      // Script (simplified P2PKH)
-      const script = this.createOutputScript(output.address)
-      parts.push(serializeVarInt(script.length))
-      parts.push(script)
-    }
-    
-    // Locktime (4 bytes, little-endian)
-    parts.push(serializeUint32LE(0))
-    
-    // Concatenate all parts
-    const totalLength = parts.reduce((sum, part) => sum + part.length, 0)
-    const result = new Uint8Array(totalLength)
-    let offset = 0
-    
-    for (const part of parts) {
-      result.set(part, offset)
-      offset += part.length
-    }
-    
-    return result
-  }
-
-  private createOutputScript(address: string): Uint8Array {
-    // Simplified P2PKH script creation
-    // In production, you'd parse the address properly
-    const script = new Uint8Array(25)
-    script[0] = OP_DUP
-    script[1] = OP_HASH160
-    script[2] = 20 // hash160 length
-    // script[3-22] would be the hash160 of the public key
-    script[23] = OP_EQUALVERIFY
-    script[24] = OP_CHECKSIG
-    return script
-  }
-
-  private async signInput(
-    rawTx: Uint8Array, 
-    inputIndex: number, 
-    input: TransactionInput, 
-    privateKey: string
-  ): Promise<Uint8Array> {
-    // Create signature hash for this input
-    const signatureHash = sha256(sha256(rawTx))
-    
-    // Sign with private key
-    const privateKeyBytes = hexToBytes(privateKey)
-    const signature = await secp256k1.sign(signatureHash, privateKeyBytes)
-    
-    // Add SIGHASH_ALL flag
-    const sigWithHashType = new Uint8Array(signature.toCompactRawBytes().length + 1)
-    sigWithHashType.set(signature.toCompactRawBytes())
-    sigWithHashType[sigWithHashType.length - 1] = 0x01 // SIGHASH_ALL
-    
-    return sigWithHashType
-  }
-
-  private assembleFinalTransaction(
-    unsignedTx: UnsignedTransaction, 
-    signatures: Uint8Array[], 
-    privateKey: string
-  ): string {
-    // This is a simplified assembly
-    // In production, you'd properly construct the scriptSig for each input
-    return 'simplified_transaction_hex' // Placeholder
   }
 }
 

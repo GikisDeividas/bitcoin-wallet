@@ -4,6 +4,15 @@ import { deriveKeysFromMnemonic, clearSensitiveData } from './bitcoin-wallet'
 import { getBlockchainService, UTXOInfo } from './blockchain-service'
 import { sha256 } from '@noble/hashes/sha256'
 import * as secp256k1 from '@noble/secp256k1'
+import { hmac } from '@noble/hashes/hmac'
+
+// Configure secp256k1 for browser environment
+if (typeof window !== 'undefined') {
+  // Setup HMAC for browser environment
+  secp256k1.etc.hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
+    return hmac(sha256, key, secp256k1.etc.concatBytes(...messages))
+  }
+}
 
 export interface TransactionInput {
   txid: string

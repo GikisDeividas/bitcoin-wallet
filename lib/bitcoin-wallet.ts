@@ -5,6 +5,16 @@ import { wordlist } from '@scure/bip39/wordlists/english'
 import { HDKey } from '@scure/bip32'
 import { sha256 } from '@noble/hashes/sha256'
 import { ripemd160 } from '@noble/hashes/ripemd160'
+import { hmac } from '@noble/hashes/hmac'
+import * as secp256k1 from '@noble/secp256k1'
+
+// Configure secp256k1 for browser environment
+if (typeof window !== 'undefined') {
+  // Setup HMAC for browser environment to fix hmacSha256Sync error
+  secp256k1.etc.hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
+    return hmac(sha256, key, secp256k1.etc.concatBytes(...messages))
+  }
+}
 
 export interface GeneratedWallet {
   mnemonic: string

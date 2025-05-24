@@ -1075,7 +1075,7 @@ export default function BitcoinWallet() {
     const [amount, setAmount] = useState('')
     const [amountUSD, setAmountUSD] = useState('')
     const [useUSD, setUseUSD] = useState(false)
-    const [fee, setFee] = useState(10) // sat/vbyte
+    const [fee, setFee] = useState(10) // sat/vbyte - now automatic
     const [mnemonic, setMnemonic] = useState('')
     const [isSending, setIsSending] = useState(false)
     const [showSeedInput, setShowSeedInput] = useState(false)
@@ -1083,6 +1083,21 @@ export default function BitcoinWallet() {
     const [error, setError] = useState('')
     const [addressError, setAddressError] = useState('')
     const [estimatedFee, setEstimatedFee] = useState(0)
+
+    // Get automatic fee rate
+    const getAutomaticFeeRate = async () => {
+      try {
+        const { getBlockchainService } = await import('@/lib/blockchain-service')
+        const service = getBlockchainService(activeWallet?.network || 'mainnet')
+        const feeEstimates = await service.getFeeEstimates()
+        
+        // Use halfHourFee for reasonable speed and cost balance
+        return feeEstimates.halfHourFee || 10
+      } catch (error) {
+        console.error('Failed to get fee estimates:', error)
+        return 10 // Fallback fee rate
+      }
+    }
 
     // Validate Bitcoin address format and network compatibility
     const validateAddress = (address: string) => {
@@ -1136,9 +1151,13 @@ export default function BitcoinWallet() {
         const service = getBlockchainService(activeWallet.network || 'mainnet')
         const utxos = await service.getAddressUTXOs(activeWallet.address)
         
+        // Get current network fee rate
+        const currentFeeRate = await getAutomaticFeeRate()
+        setFee(currentFeeRate)
+        
         // Simple fee estimation: assume 1 input + 2 outputs (recipient + change)
         const estimatedSize = (utxos.length * 148) + (2 * 34) + 10 // rough estimate in bytes
-        const estimatedFeeAmount = (estimatedSize * fee) / 100000000 // Convert to BTC
+        const estimatedFeeAmount = (estimatedSize * currentFeeRate) / 100000000 // Convert to BTC
         
         setEstimatedFee(estimatedFeeAmount)
       } catch (error) {
@@ -1146,10 +1165,10 @@ export default function BitcoinWallet() {
       }
     }
 
-    // Update fee estimation when amount or fee rate changes
+    // Update fee estimation when amount changes
     React.useEffect(() => {
       estimateTransactionFee()
-    }, [amount, fee, activeWallet])
+    }, [amount, activeWallet])
 
     const sendTransaction = async () => {
       if (!activeWallet || !mnemonic.trim()) {
@@ -1232,6 +1251,8 @@ export default function BitcoinWallet() {
           setError('Invalid recipient address format')
         } else if (errorMessage.includes('broadcast')) {
           setError('Failed to broadcast transaction. Please check your network connection and try again.')
+        } else if (errorMessage.includes('hmacSha256Sync')) {
+          setError('Cryptographic error. Please refresh the page and try again.')
         } else {
           setError(errorMessage)
         }
@@ -1392,38 +1413,28 @@ export default function BitcoinWallet() {
               <div className="text-xs text-gray-500 mt-1">
                 ≈ {useUSD ? `${parseFloat(amount).toFixed(6)} BTC` : formatCurrency(parseFloat(amount) * bitcoinPrice)}
                 {estimatedFee > 0 && (
-                  <span className="ml-2 text-orange-500">
-                    + {estimatedFee.toFixed(6)} BTC fee
+                  <span className="ml-2 text-cyan-600">
+                    + {estimatedFee.toFixed(6)} BTC network fee
                   </span>
                 )}
               </div>
             )}
           </div>
 
-          {/* Fee */}
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-gray-700">Network Fee</label>
-              <span className="text-sm text-gray-500">{fee} sat/vB</span>
+          {/* Network Fee Info */}
+          {estimatedFee > 0 && (
+            <div className="bg-cyan-50/80 backdrop-blur-sm rounded-2xl p-4 border border-cyan-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-cyan-800">Network Fee</div>
+                  <div className="text-xs text-cyan-600">Automatic • {fee} sat/vB</div>
+                </div>
+                <div className="text-sm font-medium text-cyan-800">
+                  {estimatedFee.toFixed(6)} BTC
+                </div>
+              </div>
             </div>
-            <input
-              type="range"
-              min="1"
-              max="50"
-              value={fee}
-              onChange={(e) => setFee(parseInt(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-              style={{
-                background: `linear-gradient(to right, #06b6d4 0%, #06b6d4 ${(fee-1)/49*100}%, #e5e7eb ${(fee-1)/49*100}%, #e5e7eb 100%)`
-              }}
-              aria-label="Network fee in satoshis per vbyte"
-              title="Adjust network fee for transaction priority"
-            />
-            <div className="flex justify-between text-xs text-gray-400 mt-1">
-              <span>Slow</span>
-              <span>Fast</span>
-            </div>
-          </div>
+          )}
 
           {/* Send Button */}
           {canSend && !showSeedInput && (

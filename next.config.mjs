@@ -9,8 +9,13 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // CSP configuration to allow cryptographic libraries to work
+  // Disable CSP for development - only apply in production
   async headers() {
+    // Only apply CSP in production
+    if (process.env.NODE_ENV !== 'production') {
+      return []
+    }
+    
     return [
       {
         // Apply headers to all routes

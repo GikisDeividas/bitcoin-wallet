@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from 'react'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import React, { useState, useEffect } from 'react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { 
   Home, 
@@ -11,40 +11,26 @@ import {
   Wallet, 
   Plus, 
   ArrowLeft, 
-  RefreshCw, 
-  Copy, 
-  Check, 
-  Eye, 
-  EyeOff, 
-  Trash2, 
-  Shield, 
-  Info, 
-  X, 
+  RefreshCw,
   MoreHorizontal,
-  CircleAlert,
   ArrowUpRight,
   ArrowDownLeft,
-  QrCode
+  Eye,
+  EyeOff,
+  Check,
+  Copy,
+  Shield,
+  ChevronRight,
+  Lock,
+  Key
 } from 'lucide-react'
-
-// Import Bitcoin wallet functions statically to avoid CSP eval issues
-import { 
-  generateBitcoinWallet, 
-  importWalletFromMnemonic, 
-  isValidMnemonic, 
-  exportPrivateKey, 
-  demonstrateKeyRegeneration 
-} from '@/lib/bitcoin-wallet'
-import { createTransactionSigner } from '@/lib/transaction-signer'
-import { getBlockchainService } from '@/lib/blockchain-service'
 import { useBitcoinPrice } from "@/hooks/useBitcoinPrice"
 import { useCurrencyRates } from "@/hooks/useCurrencyRates"
-import { walletStorage, type TransactionData } from "@/lib/storage"
+import { walletStorage } from "@/lib/storage"
 import type { WalletData } from "@/types/wallet"
-import QRCode from 'qrcode'
 import Image from 'next/image'
 
-type PageType = 'home' | 'wallet' | 'send' | 'receive' | 'settings' | 'add-wallet'
+type PageType = 'home' | 'wallet' | 'send' | 'receive' | 'settings' | 'add-wallet' | 'pin-setup'
 
 export default function BitcoinWallet() {
   const { price: bitcoinPrice, change24h, isLoading, error, lastUpdated } = useBitcoinPrice()
@@ -56,218 +42,127 @@ export default function BitcoinWallet() {
   const [wallets, setWallets] = useState<WalletData[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [isLocked, setIsLocked] = useState(false)
-  const [enteredPin, setEnteredPin] = useState('')
-  const [pinError, setPinError] = useState('')
   const [settings, setSettings] = useState({
     pinEnabled: false,
     pinCode: '',
     autoLockTime: 5,
     showBalance: true,
     currency: 'USD',
-    network: 'mainnet', // Changed default to mainnet only
+    network: 'mainnet',
     notifications: true
   })
 
-  // Add state for seed phrase reminder
-  const [showSeedReminder, setShowSeedReminder] = useState(false)
-
-  // 🌐 Refresh wallet data from blockchain
-  const refreshWalletData = async (wallet: WalletData): Promise<WalletData> => {
-    try {
-      const blockchainService = getBlockchainService('mainnet') // Always use mainnet
-      
-      console.log(`💫 Fetching data for ${wallet.name} (mainnet)...`)
-      console.log(`Address: ${wallet.address}`)
-      
-      // Set a timeout for the entire operation
-      const refreshTimeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Wallet refresh timeout')), 8000) // 8 second total timeout
-      })
-      
-      // Race between actual refresh and timeout
-      const refreshPromise = (async () => {
-        // Fetch real balance from blockchain
-        const balanceData = await blockchainService.getAddressBalance(wallet.address)
-        console.log(`💰 Balance: ${balanceData.total} BTC`)
-        
-        // Fetch real transactions from blockchain  
-        const transactions = await blockchainService.getAddressTransactions(wallet.address)
-        console.log(`📋 Transactions: ${transactions.length}`)
-        
-        return {
-          ...wallet,
-          balance: balanceData.total,
-          transactions: transactions
-        }
-      })()
-      
-      const updatedWallet = await Promise.race([refreshPromise, refreshTimeout]) as WalletData
-      return updatedWallet
-      
-    } catch (error) {
-      console.error(`❌ Refresh failed for ${wallet.name}:`, error instanceof Error ? error.message : 'Unknown error')
-      
-      // Return wallet with current data instead of failing completely
-      return {
-        ...wallet,
-        // Keep existing balance if API fails
-        transactions: wallet.transactions || []
-      }
-    }
-  }
-
-  // 🔄 Refresh all wallets from blockchain
-  const refreshAllWallets = async () => {
-    if (wallets.length === 0) return
-    
-    setIsRefreshing(true)
-    console.log(`💫 Refreshing ${wallets.length} wallets on mainnet...`)
-    
-    try {
-      // Process wallets in parallel for speed
-      const refreshPromises = wallets.map(wallet => 
-        refreshWalletData(wallet).catch((error: any) => {
-          console.warn(`⚠️ Wallet ${wallet.name} refresh failed:`, error?.message || 'Unknown error')
-          return wallet // Return original if error, don't fail everything
-        })
-      )
-      
-      const refreshedWallets: WalletData[] = await Promise.all(refreshPromises) as WalletData[]
-      console.log(`✅ Refreshed ${refreshedWallets.length} wallets successfully`)
-      
-      setWallets(refreshedWallets)
-      
-      // Update selected wallet if it was refreshed
-      if (selectedWallet) {
-        const refreshedSelected = refreshedWallets.find(w => w.id === selectedWallet.id)
-        if (refreshedSelected) {
-          setSelectedWallet(refreshedSelected)
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error refreshing wallets:', error)
-    } finally {
-      setIsRefreshing(false)
-    }
-  }
-
-  // Load settings and check PIN on mount
+  // Initialize
   useEffect(() => {
-    // Only access localStorage on client side
     if (typeof window !== 'undefined') {
-      const savedSettings = localStorage.getItem('rabbit-wallet-settings') // Updated storage key
-      if (savedSettings) {
-        const parsedSettings = JSON.parse(savedSettings)
-        // Force mainnet for existing users
-        parsedSettings.network = 'mainnet'
-        setSettings(parsedSettings)
-        
-        // If PIN is enabled, lock the app initially
-        if (parsedSettings.pinEnabled && parsedSettings.pinCode) {
-          setIsLocked(true)
-        }
+      walletStorage.initialize()
+      const savedWallets = walletStorage.loadWallets()
+      const savedSettings = localStorage.getItem('rabbit-wallet-settings')
+      
+      if (savedWallets.length > 0) {
+        setWallets(savedWallets)
+        setSelectedWallet(savedWallets[0])
       }
       
-      // Check if user has seen seed phrase reminder
-      const hasSeenReminder = localStorage.getItem('rabbit-wallet-seed-reminder') // Updated storage key
-      if (!hasSeenReminder && wallets.length === 0) {
-        setShowSeedReminder(true)
+      if (savedSettings) {
+        setSettings(JSON.parse(savedSettings))
       }
     }
-    
-    // Initialize storage system
-    walletStorage.initialize()
-    
-    // Load existing wallets immediately with cached data
-    const savedWallets = walletStorage.loadWallets()
-    
-    if (savedWallets.length > 0) {
-      // Force all loaded wallets to mainnet
-      const mainnetWallets = savedWallets.map(wallet => ({
-        ...wallet,
-        network: 'mainnet' as const
-      }))
-      setWallets(mainnetWallets)
-      setSelectedWallet(mainnetWallets[0])
-      console.log('📱 Loaded cached wallet data instantly')
-    }
-    
     setIsInitialized(true)
   }, [])
 
-  // 🌐 Auto-refresh wallet data when wallets are loaded
+  // Auto-refresh balances when wallets change
   useEffect(() => {
-    if (isInitialized && wallets.length > 0 && !isLocked) {
-      console.log('🔄 Starting immediate background refresh...')
+    const refreshBalances = async () => {
+      if (wallets.length === 0 || isRefreshing) return
       
-      // Start immediate refresh in background (non-blocking)
-      refreshAllWallets()
-      
-      // Set up auto-refresh every 30 seconds for mainnet
-      const refreshInterval = 30000
-      const autoRefreshInterval = setInterval(() => {
-        console.log(`🔄 Auto-refreshing wallet data (mainnet) every ${refreshInterval/1000}s...`)
-        refreshAllWallets()
-      }, refreshInterval)
-      
-      return () => clearInterval(autoRefreshInterval)
-    }
-  }, [isInitialized, isLocked])
-
-  // Handle PIN verification
-  const handlePinVerification = () => {
-    setPinError('')
-    
-    if (enteredPin === settings.pinCode) {
-      setIsLocked(false)
-      setEnteredPin('')
-      
-      // Refresh wallet data after unlock
-      if (wallets.length > 0) {
-        refreshAllWallets()
+      setIsRefreshing(true)
+      try {
+        const { getBlockchainService } = await import('@/lib/blockchain-service')
+        
+        const updatedWallets = await Promise.all(
+          wallets.map(async (wallet) => {
+            try {
+              const service = getBlockchainService(wallet.network || 'mainnet')
+              const balance = await service.getAddressBalance(wallet.address)
+              
+              return {
+                ...wallet,
+                balance: balance.total
+              }
+            } catch (error) {
+              console.error(`Failed to refresh wallet ${wallet.name}:`, error)
+              return wallet
+            }
+          })
+        )
+        
+        // Only update if balances actually changed
+        const hasChanges = updatedWallets.some((wallet, index) => 
+          wallet.balance !== wallets[index].balance
+        )
+        
+        if (hasChanges) {
+          setWallets(updatedWallets)
+          walletStorage.saveWallets(updatedWallets)
+          
+          // Update selected wallet if it exists in updated list
+          if (selectedWallet) {
+            const updated = updatedWallets.find(w => w.id === selectedWallet.id)
+            if (updated) setSelectedWallet(updated)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to refresh balances:', error)
+      } finally {
+        setIsRefreshing(false)
       }
-    } else {
-      setPinError('Incorrect PIN')
-      setEnteredPin('')
+    }
+
+    // Initial refresh after wallet load
+    if (wallets.length > 0 && isInitialized) {
+      refreshBalances()
+    }
+
+    // Set up periodic refresh every 30 seconds
+    const interval = setInterval(refreshBalances, 30000)
+    
+    return () => clearInterval(interval)
+  }, [wallets.length, isInitialized]) // Depend on wallet count and initialization
+
+  // Helper functions
+  const navigateToPage = (page: PageType) => {
+    console.log('🔥 navigateToPage called with:', page, 'current page:', currentPage)
+    
+    if (page === currentPage) {
+      console.log('🔥 Same page, returning early')
+      return
+    }
+    
+    setIsTransitioning(true)
+    setTimeout(() => {
+      setCurrentPage(page)
+      setTimeout(() => {
+        setIsTransitioning(false)
+      }, 100)
+    }, 150)
+  }
+
+  const updateSettings = (newSettings: any) => {
+    setSettings(newSettings)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('rabbit-wallet-settings', JSON.stringify(newSettings))
     }
   }
 
-  // Currency conversion functions
-  const getExchangeRates = () => {
-    // Use real-world exchange rates from the currency hook
-    return currencyRates
-  }
-
-  const convertToUSD = (amount: number, fromCurrency: string) => {
-    if (!bitcoinPrice) return amount
-    
-    const rates = getExchangeRates()
-    
-    if (fromCurrency === 'USD') return amount
-    if (fromCurrency === 'EUR') return amount / rates.EUR
-    if (fromCurrency === 'GBP') return amount / rates.GBP
-    if (fromCurrency === 'BTC') return amount * bitcoinPrice
-    
-    return amount
-  }
-
-  const convertFromUSD = (usdAmount: number, toCurrency: string) => {
-    if (!bitcoinPrice) return usdAmount
-    
-    const rates = getExchangeRates()
-    
-    if (toCurrency === 'USD') return usdAmount
-    if (toCurrency === 'EUR') return usdAmount * rates.EUR
-    if (toCurrency === 'GBP') return usdAmount * rates.GBP
-    if (toCurrency === 'BTC') return usdAmount / bitcoinPrice
-    
-    return usdAmount
+  const handleSettingToggle = (key: string, value: any) => {
+    const newSettings = { ...settings, [key]: value }
+    updateSettings(newSettings)
   }
 
   const formatCurrency = (amount: number, currency: string = settings.currency, showSymbol = true) => {
     if (currency === 'BTC') {
-      return `${showSymbol ? '₿ ' : ''}${amount.toFixed(5)}`
+      return `${showSymbol ? '₿ ' : ''}${amount.toFixed(6)}`
     }
     
     const symbols = {
@@ -283,2012 +178,146 @@ export default function BitcoinWallet() {
       : amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
-  // Update settings function
-  const updateSettings = (newSettings: any) => {
-    setSettings(newSettings)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('rabbit-wallet-settings', JSON.stringify(newSettings))
-    }
-  }
-
-  // Save wallets whenever they change
-  useEffect(() => {
-    if (isInitialized && wallets.length > 0) {
-      walletStorage.saveWallets(wallets)
-    }
-  }, [wallets, isInitialized])
-
-  // Page navigation with animation
-  const navigateToPage = (page: PageType) => {
-    if (page === currentPage) return
-    
-    setIsTransitioning(true)
-    setTimeout(() => {
-      setCurrentPage(page)
-      setTimeout(() => setIsTransitioning(false), 100)
-    }, 150)
-  }
-
-  // Handle wallet updates
-  const handleUpdateWallet = (updatedWallet: WalletData) => {
-    const updatedWallets = wallets.map(w => 
-      w.id === updatedWallet.id ? updatedWallet : w
-    )
-    setWallets(updatedWallets)
-    
-    if (selectedWallet?.id === updatedWallet.id) {
-      setSelectedWallet(updatedWallet)
-    }
-  }
-
-  // Handle wallet deletion
-  const handleDeleteWallet = (walletId: string) => {
-    const updatedWallets = wallets.filter(w => w.id !== walletId)
-    setWallets(updatedWallets)
-    
-    if (selectedWallet?.id === walletId) {
-      setSelectedWallet(updatedWallets.length > 0 ? updatedWallets[0] : null)
-      setCurrentPage('home')
-    }
-  }
-
-  // Calculate totals with currency conversion
+  // Calculate totals
+  const activeWallet = selectedWallet || wallets[0]
   const totalBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0)
   const totalValueUSD = bitcoinPrice ? totalBalance * bitcoinPrice : 0
-  const totalValue = convertFromUSD(totalValueUSD, settings.currency)
-  const profit24hUSD = change24h && bitcoinPrice ? (totalBalance * bitcoinPrice * change24h) / 100 : 0
-  const profit24h = convertFromUSD(Math.abs(profit24hUSD), settings.currency)
-  const isPositive = profit24hUSD >= 0
+  const isPositive = change24h ? change24h >= 0 : true
 
-  // Convert Bitcoin price to selected currency
-  const displayPrice = bitcoinPrice ? convertFromUSD(bitcoinPrice, settings.currency) : 0
-
-  // Format functions
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(price)
-  }
-
-  const formatChange = (change: number) => {
-    return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`
-  }
-
-  // Show loading state during initialization
-  if (!isInitialized) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <div className="w-[375px] h-[812px] bg-black rounded-[3rem] p-2 shadow-2xl">
-          <div className="w-full h-full bg-gray-50 rounded-[2.5rem] overflow-hidden relative flex flex-col">
-            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-6 bg-black rounded-b-2xl z-10"></div>
-            
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-cyan-400" />
-                <p className="text-gray-600">Initializing wallet...</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Handle case where no wallets exist
-  if (wallets.length === 0) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <div className="w-[375px] h-[812px] bg-black rounded-[3rem] p-2 shadow-2xl">
-          <div className="w-full h-full bg-gray-50 rounded-[2.5rem] overflow-hidden relative flex flex-col">
-            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-6 bg-black rounded-b-2xl z-10"></div>
-            
-            <header className="flex items-center justify-between px-4 py-4 bg-white border-b border-gray-100 rounded-t-[2.5rem]">
-              <div className="flex items-center gap-2">
-                {currentPage !== 'home' && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-8 h-8 mr-2"
-                    onClick={() => navigateToPage('home')}
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                  </Button>
-                )}
-                <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center">
-                  <Image 
-                    src="/images/rabbit-logo.svg" 
-                    alt="Rabbit" 
-                    width={20} 
-                    height={20} 
-                    className="text-white"
-                  />
-                </div>
-                <div>
-                  <h1 className="text-lg font-medium text-gray-900">
-                    {currentPage === 'home' ? 'Rabbit' : 
-                     currentPage === 'wallet' ? 'My Wallets' :
-                     currentPage === 'send' ? 'Send Bitcoin' :
-                     currentPage === 'receive' ? 'Receive Bitcoin' :
-                     currentPage === 'settings' ? 'Settings' : 
-                     currentPage === 'add-wallet' ? 'Add Wallet' : 'Rabbit'}
-                  </h1>
-                </div>
-              </div>
-            </header>
-
-            <div className="flex-1 flex items-center justify-center px-6">
-              <div className="text-center max-w-md">
-                <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Image 
-                    src="/images/rabbit-logo.svg" 
-                    alt="Rabbit" 
-                    width={32} 
-                    height={32} 
-                    className="text-orange-600"
-                  />
-                </div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">Welcome to Rabbit</h2>
-                <p className="text-gray-600 mb-6 text-sm">Get started by creating your first Bitcoin wallet. Your keys, your Bitcoin.</p>
-                
-                <button
-                  onClick={() => navigateToPage('add-wallet')}
-                  className="w-full bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 rounded-lg p-4 mb-6 hover:from-orange-100 hover:to-orange-200 transition-colors cursor-pointer"
-                >
-                  <p className="text-orange-800 text-sm">
-                    🐰 <strong>Tap to create or import a wallet</strong>
-                  </p>
-                </button>
-                
-                <div className="text-xs text-gray-500 space-y-1">
-                  <p>• Create a new wallet with secure seed phrase</p>
-                  <p>• Import existing wallet with seed phrase</p>
-                  <p>• Real Bitcoin transactions on mainnet</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white border-t border-gray-200 px-4 py-3 flex-shrink-0">
-              <div className="flex justify-around items-center">
-                {[
-                  { icon: Home, label: "Home", active: true },
-                  { icon: Wallet, label: "Wallet", disabled: true },
-                  { icon: Send, label: "Send", disabled: true },
-                  { icon: Download, label: "Receive", disabled: true },
-                  { icon: Settings, label: "Settings", disabled: true },
-                ].map(({ icon: Icon, label, active, disabled }) => (
-                  <Button
-                    key={label}
-                    variant="ghost"
-                    className={`flex-col gap-1 hover:bg-transparent p-2 h-auto min-h-[60px] ${
-                      active ? "text-cyan-400" : disabled ? "text-gray-300" : "text-gray-400"
-                    }`}
-                    disabled={disabled}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-xs font-medium">{label}</span>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const activeWallet = selectedWallet || wallets[0]
-
-  // Show PIN entry screen if locked
-  if (isLocked) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <div className="w-[375px] h-[812px] bg-black rounded-[3rem] p-2 shadow-2xl">
-          <div className="w-full h-full bg-gray-50 rounded-[2.5rem] overflow-hidden relative flex flex-col">
-            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-6 bg-black rounded-b-2xl z-10"></div>
-            
-            <div className="flex-1 flex items-center justify-center px-6">
-              <div className="text-center max-w-md">
-                <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <span className="text-orange-600 font-bold text-2xl">🔒</span>
-                </div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">Enter PIN</h2>
-                <p className="text-gray-600 mb-6 text-sm">Enter your 4-digit PIN to unlock Rabbit</p>
-                
-                {pinError && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-                    <span className="text-red-800 text-sm">{pinError}</span>
-                  </div>
-                )}
-                
-                <div className="mb-6">
-                  <input
-                    type="password"
-                    placeholder="Enter PIN"
-                    value={enteredPin}
-                    onChange={(e) => setEnteredPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    className="w-full p-4 border border-gray-300 rounded-lg text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
-                    maxLength={4}
-                    autoFocus
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter' && enteredPin.length === 4) {
-                        handlePinVerification()
-                      }
-                    }}
-                  />
-                </div>
-                
-                <Button
-                  className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-12"
-                  onClick={handlePinVerification}
-                  disabled={enteredPin.length !== 4}
-                >
-                  Unlock
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Show seed phrase reminder modal
-  if (showSeedReminder) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <div className="w-[375px] h-[812px] bg-black rounded-[3rem] p-2 shadow-2xl">
-          <div className="w-full h-full bg-gray-50 rounded-[2.5rem] overflow-hidden relative flex flex-col">
-            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-6 bg-black rounded-b-2xl z-10"></div>
-            
-            <div className="flex-1 flex items-center justify-center px-4 py-8">
-              <div className="text-center max-w-md">
-                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-red-600 font-bold text-xl">⚠️</span>
-                </div>
-                <h2 className="text-lg font-semibold text-gray-900 mb-3">Important: Seed Phrase Security</h2>
-                
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3 text-left">
-                  <h3 className="font-medium text-red-800 mb-2 text-sm">🔑 Critical Information:</h3>
-                  <ul className="text-red-700 text-xs space-y-1">
-                    <li>• Your <strong>seed phrase is the ONLY way</strong> to recover your Bitcoin</li>
-                    <li>• We <strong>never store your private keys</strong> - this keeps your funds secure</li>
-                    <li>• If you restart the app, you'll need your seed phrase to send Bitcoin</li>
-                    <li>• If you lose your seed phrase, <strong>your Bitcoin is lost forever</strong></li>
-                  </ul>
-                </div>
-
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 text-left">
-                  <h3 className="font-medium text-amber-800 mb-2 text-sm">✅ What We Store Safely:</h3>
-                  <ul className="text-amber-700 text-xs space-y-1">
-                    <li>• Wallet names and addresses (public info)</li>
-                    <li>• Your preferences and settings</li>
-                    <li>• Transaction history (fetched from blockchain)</li>
-                  </ul>
-                </div>
-
-                <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-3 mb-4 text-left">
-                  <h3 className="font-medium text-cyan-800 mb-2 text-sm">🛡️ How This Keeps You Safe:</h3>
-                  <ul className="text-cyan-700 text-xs space-y-1">
-                    <li>• No one can hack your private keys from our app</li>
-                    <li>• You have complete control of your Bitcoin</li>
-                    <li>• Your funds work on any compatible wallet</li>
-                  </ul>
-                </div>
-                
-                <Button
-                  className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-10 text-sm"
-                  onClick={() => {
-                    setShowSeedReminder(false)
-                    if (typeof window !== 'undefined') {
-                      localStorage.setItem('rabbit-wallet-seed-reminder', 'seen')
-                    }
-                  }}
-                >
-                  I Understand - Continue
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-      <div className="w-[375px] h-[812px] bg-black rounded-[3rem] p-2 shadow-2xl relative">
-        <div 
-          className="w-full h-full bg-gray-50 rounded-[2.5rem] overflow-hidden relative flex flex-col phone-container"
-        >
-          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-6 bg-black rounded-b-2xl z-10"></div>
-
-          {/* Page Content with Blur Transition */}
-          <div className={`flex-1 flex flex-col transition-all duration-300 ease-in-out ${
-            isTransitioning ? 'blur-sm opacity-50 scale-95' : 'blur-0 opacity-100 scale-100'
-          }`}>
-            {/* Header */}
-            <header className="flex items-center justify-between px-4 py-4 bg-white border-b border-gray-100 rounded-t-[2.5rem]">
-              <div className="flex items-center gap-2">
-                {currentPage !== 'home' && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-8 h-8 mr-2"
-                    onClick={() => navigateToPage('home')}
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                  </Button>
-                )}
-                <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center">
-                  <Image 
-                    src="/images/rabbit-logo.svg" 
-                    alt="Rabbit" 
-                    width={20} 
-                    height={20} 
-                    className="text-white"
-                  />
-                </div>
-                <div>
-                  <h1 className="text-lg font-medium text-gray-900">
-                    {currentPage === 'home' ? 'Rabbit' : 
-                     currentPage === 'wallet' ? 'My Wallets' :
-                     currentPage === 'send' ? 'Send Bitcoin' :
-                     currentPage === 'receive' ? 'Receive Bitcoin' :
-                     currentPage === 'settings' ? 'Settings' : 
-                     currentPage === 'add-wallet' ? 'Add Wallet' : 'Rabbit'}
-                  </h1>
-                </div>
-              </div>
-            </header>
-
-            {/* Page Content */}
-            <main 
-              className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-20 scroll-smooth relative main-content" 
-              onWheel={(e) => {
-                // Ensure mouse wheel scrolling works
-                e.currentTarget.scrollBy({
-                  top: e.deltaY,
-                  behavior: 'smooth'
-                });
-              }}
-            >
-              {currentPage === 'home' && <HomePage />}
-              {currentPage === 'wallet' && <WalletPage />}
-              {currentPage === 'send' && <SendPage />}
-              {currentPage === 'receive' && <ReceivePage />}
-              {currentPage === 'settings' && <SettingsPage />}
-              {currentPage === 'add-wallet' && <AddWalletPage />}
-            </main>
-          </div>
-
-          {/* Bottom Navigation - Fixed Overlay */}
-          <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 z-20 rounded-b-[2.5rem]">
-            <div className="flex justify-around items-center">
-              {[
-                { icon: Home, label: "Home", page: 'home' as PageType },
-                { icon: Wallet, label: "Wallet", page: 'wallet' as PageType },
-                { icon: Send, label: "Send", page: 'send' as PageType },
-                { icon: Download, label: "Receive", page: 'receive' as PageType },
-                { icon: Settings, label: "Settings", page: 'settings' as PageType },
-              ].map(({ icon: Icon, label, page }) => (
-                <Button
-                  key={label}
-                  variant="ghost"
-                  className={`flex-col gap-1 hover:bg-transparent p-2 h-auto min-h-[60px] transition-colors duration-200 ${
-                    currentPage === page ? "text-cyan-400 hover:text-cyan-500" : "text-gray-400 hover:text-gray-600"
-                  }`}
-                  onClick={() => navigateToPage(page)}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="text-xs font-medium">{label}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
-  // HOME PAGE COMPONENT
+  // Component functions - defined BEFORE the main return
   function HomePage() {
-    // Check for network mismatches
-    const networkMismatches = wallets.filter(wallet => wallet.network !== settings.network)
-    const hasNetworkMismatches = networkMismatches.length > 0
+    if (!activeWallet) return <div>No wallet available</div>
 
     return (
-      <>
+      <div className="space-y-3">
         {/* Active Wallet Selector */}
-        <Card className="border-slate-200 rounded-xl mb-3">
-          <CardContent className="p-3">
-            <Button
-              variant="ghost"
-              className="w-full flex items-center justify-between p-0 h-auto hover:bg-transparent"
-              onClick={() => navigateToPage('wallet')}
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-cyan-100 rounded-full flex items-center justify-center">
-                  <Wallet className="w-3 h-3 text-cyan-600" />
-                </div>
-                <div className="text-left">
-                  <div className="font-medium text-gray-900 text-xs">{activeWallet.name}</div>
-                  <div className="text-xs text-gray-500">{activeWallet.balance.toFixed(4)} BTC</div>
-                </div>
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 shadow-sm border border-gray-100">
+          <button
+            className="w-full flex items-center justify-between p-0 text-left"
+            onClick={() => navigateToPage('wallet')}
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-full flex items-center justify-center">
+                <Wallet className="w-4 h-4 text-cyan-600" />
               </div>
-              <MoreHorizontal className="w-3 h-3 text-gray-400" />
-            </Button>
-          </CardContent>
-        </Card>
+              <div>
+                <div className="font-medium text-gray-900 text-sm">{activeWallet.name}</div>
+                <div className="text-xs text-gray-500">{activeWallet.balance.toFixed(6)} BTC</div>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-gray-400" />
+          </button>
+        </div>
 
         {/* Balance Card */}
-        <Card className="bg-slate-800 border-0 rounded-2xl mb-4 shadow-lg">
-          <CardContent className="p-4">
-            <div className="mb-3">
-              <div className="text-gray-400 text-xs mb-1 flex items-center gap-2">
-                Total Balance
-                {isRefreshing && (
-                  <RefreshCw className="w-3 h-3 animate-spin text-gray-500" />
-                )}
-              </div>
-              <div className="text-white text-2xl font-bold">
-                {!settings.showBalance ? (
-                  <div className="flex items-center gap-2">
-                    <span>****</span>
-                    <button
-                      onClick={() => updateSettings({ ...settings, showBalance: true })}
-                      className="text-gray-400 hover:text-white text-sm"
-                    >
-                      👁️
-                    </button>
-                  </div>
-                ) : isLoading ? (
-                  <div className="flex items-center gap-2">
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                    Loading...
-                  </div>
-                ) : error ? (
-                  <div className="text-red-400 text-sm">Error loading balance</div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span>{formatCurrency(totalValue)}</span>
-                    <button
-                      onClick={() => updateSettings({ ...settings, showBalance: false })}
-                      className="text-gray-400 hover:text-white text-sm"
-                    >
-                      👁️‍🗨️
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex justify-between items-end">
-              <div>
-                <div className="text-gray-400 text-xs">Bitcoin Holdings</div>
-                <div className="text-white text-sm font-medium">
-                  {settings.showBalance ? `${totalBalance.toFixed(4)} BTC` : '****'}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-gray-400 text-xs">24h Profit</div>
-                <div className={`text-sm font-medium ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                  {isLoading ? '...' : settings.showBalance ? 
-                    `${isPositive ? '+' : ''}${formatCurrency(Math.abs(profit24h), settings.currency, false)}` : 
-                    '****'
-                  }
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Price Chart */}
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-3">
-            <div className="text-gray-900 text-sm font-medium">
-              Bitcoin Price
-              {lastUpdated && (
-                <div className="text-xs text-gray-500 mt-1">
-                  Updated {lastUpdated.toLocaleTimeString()}
-                </div>
+        <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-3xl p-6 shadow-lg">
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-gray-400 text-xs font-medium">Total Balance</span>
+              {isRefreshing && (
+                <RefreshCw className="w-3 h-3 animate-spin text-gray-500" />
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={refreshAllWallets}
-                disabled={isRefreshing}
-                className="p-1 rounded-full hover:bg-gray-100 transition-colors"
-                title="Refresh wallet data"
-              >
-                <RefreshCw className={`w-4 h-4 text-gray-500 ${isRefreshing ? 'animate-spin' : ''}`} />
-              </button>
-              <div className="text-right">
-                <div className="text-cyan-400 text-sm font-medium">
-                  {isLoading ? (
-                    <div className="flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                      Loading...
-                    </div>
-                  ) : error ? (
-                    <div className="text-red-400 text-xs">Failed to load</div>
-                  ) : (
-                    settings.currency === 'BTC' ? `₿ 1.00000` : formatCurrency(displayPrice, settings.currency)
-                  )}
+            <div className="text-white text-3xl font-light tracking-tight">
+              {!settings.showBalance ? (
+                <span>••••••</span>
+              ) : isLoading ? (
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  <span className="text-lg">Loading...</span>
                 </div>
-                {change24h && (
-                  <div className={`text-xs ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                    {formatChange(change24h)}
-                  </div>
-                )}
-              </div>
+              ) : error ? (
+                <div className="text-red-400 text-base">Error loading</div>
+              ) : (
+                <span>{formatCurrency(totalValueUSD)}</span>
+              )}
             </div>
           </div>
-          <div className="bg-cyan-50 rounded-xl p-3 h-24 relative">
-            <svg className="w-full h-full" viewBox="0 0 300 80">
-              <path 
-                d={isPositive ? "M 0 60 Q 75 40 150 35 T 300 20" : "M 0 40 Q 75 50 150 55 T 300 65"} 
-                stroke={isPositive ? "#22d3ee" : "#ef4444"} 
-                strokeWidth="2" 
-                fill="none" 
-              />
-            </svg>
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
-              <span>4h</span>
-              <span>2h</span>
-              <span>now</span>
+          
+          <div className="flex justify-between items-end">
+            <div>
+              <div className="text-gray-400 text-xs mb-1">Bitcoin Holdings</div>
+              <div className="text-white text-sm font-medium">
+                {settings.showBalance ? `${totalBalance.toFixed(6)} BTC` : '••••••'}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-gray-400 text-xs mb-1">24h Change</div>
+              <div className={`text-sm font-medium ${isPositive ? 'text-cyan-400' : 'text-red-400'}`}>
+                {change24h ? `${change24h >= 0 ? '+' : ''}${change24h.toFixed(2)}%` : '...'}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex gap-3 mb-6">
-          <Button
-            className="flex-1 bg-cyan-400 hover:bg-cyan-500 text-white rounded-xl h-12 text-sm font-medium"
+        <div className="flex gap-3">
+          <button
+            className="flex-1 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-14 text-sm font-medium shadow-sm active:scale-95 transition-transform"
             onClick={() => navigateToPage('receive')}
           >
-            <Download className="w-4 h-4 mr-2" />
-            Receive
-          </Button>
-          <Button
-            className="flex-1 bg-slate-700 hover:bg-slate-800 text-white rounded-xl h-12 text-sm font-medium"
+            <div className="flex items-center justify-center gap-2">
+              <Download className="w-4 h-4" />
+              <span>Receive</span>
+            </div>
+          </button>
+          <button
+            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-2xl h-14 text-sm font-medium shadow-sm active:scale-95 transition-all"
             onClick={() => navigateToPage('send')}
           >
-            <Send className="w-4 h-4 mr-2" />
-            Send
-          </Button>
+            <div className="flex items-center justify-center gap-2">
+              <Send className="w-4 h-4" />
+              <span>Send</span>
+            </div>
+          </button>
         </div>
 
         {/* Recent Transactions */}
-        <div className="mb-4">
-          <h3 className="text-gray-900 text-sm font-medium mb-3">Recent</h3>
-          <div className="space-y-3">
-            {activeWallet.transactions.slice(0, 3).map((tx, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                      tx.type === "received" ? "bg-cyan-100" : "bg-gray-100"
-                    }`}
-                  >
-                    {tx.type === "received" ? (
-                      <ArrowUpRight className="w-3 h-3 text-cyan-600" />
-                    ) : (
-                      <ArrowDownLeft className="w-3 h-3 text-gray-600" />
-                    )}
+        <div className="mt-6">
+          <h3 className="text-gray-900 text-sm font-medium mb-3 px-1">Recent</h3>
+          <div className="space-y-2">
+            {activeWallet.transactions?.slice(0, 5).map((tx, i) => (
+              <div key={i} className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      tx.type === "received" ? "bg-cyan-50" : "bg-gray-50"
+                    }`}>
+                      {tx.type === "received" ? (
+                        <ArrowDownLeft className="w-4 h-4 text-cyan-600" />
+                      ) : (
+                        <ArrowUpRight className="w-4 h-4 text-gray-600" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-900 text-sm capitalize">{tx.type}</div>
+                      <div className="text-xs text-gray-500">{tx.date}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-medium text-gray-900 text-xs capitalize">{tx.type}</div>
-                    <div className="text-xs text-gray-500">{tx.date}</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-medium text-gray-900 text-xs">{tx.amount.toFixed(3)} BTC</div>
-                  <div className={`text-xs ${tx.status === "completed" ? "text-cyan-400" : "text-gray-500"}`}>
-                    {tx.status}
+                  <div className="text-right">
+                    <div className="font-medium text-gray-900 text-sm">
+                      {tx.type === "received" ? "+" : "-"}{tx.amount.toFixed(6)} BTC
+                    </div>
+                    <div className={`text-xs ${tx.status === "completed" ? "text-cyan-500" : "text-gray-500"}`}>
+                      {tx.status}
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      </>
-    )
-  }
-
-  // WALLET PAGE COMPONENT
-  function WalletPage() {
-    const [showExportModal, setShowExportModal] = useState(false)
-    const [exportMnemonic, setExportMnemonic] = useState('')
-    const [exportError, setExportError] = useState('')
-    const [exportedKeys, setExportedKeys] = useState<any>(null)
-    const [isExporting, setIsExporting] = useState(false)
-    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-
-    const handlePrivateKeyExport = async (wallet: WalletData) => {
-      setExportError('')
-      setIsExporting(true)
-      
-      try {
-        // Direct function call - static import at top of file
-        const keys = await exportPrivateKey(
-          exportMnemonic,
-          wallet.derivationPath,
-          wallet.network,
-          wallet.address
-        )
-        setExportedKeys({ ...keys, walletName: wallet.name })
-        
-        // Clear mnemonic from memory after use
-        setExportMnemonic('')
-      } catch (error) {
-        setExportError(error instanceof Error ? error.message : 'Export failed')
-      } finally {
-        setIsExporting(false)
-      }
-    }
-
-    const resetExportModal = () => {
-      setShowExportModal(false)
-      setExportMnemonic('')
-      setExportError('')
-      setExportedKeys(null)
-      setIsExporting(false)
-    }
-
-    const handleWalletClick = (wallet: WalletData, e: React.MouseEvent) => {
-      // Don't switch if clicking on action buttons
-      if ((e.target as HTMLElement).closest('button')) {
-        return
-      }
-      
-      if (wallet.id !== selectedWallet?.id) {
-        setSelectedWallet(wallet)
-        navigateToPage('home')
-      }
-    }
-
-    const handleDeleteClick = (walletId: string, e: React.MouseEvent) => {
-      e.stopPropagation()
-      setDeleteConfirm(walletId)
-    }
-
-    const confirmDelete = () => {
-      if (deleteConfirm) {
-        handleDeleteWallet(deleteConfirm)
-        setDeleteConfirm(null)
-      }
-    }
-
-    const handleExportClick = (wallet: WalletData, e: React.MouseEvent) => {
-      e.stopPropagation()
-      setShowExportModal(true)
-      setExportedKeys({ targetWallet: wallet })
-    }
-
-    return (
-      <>
-        <div className="space-y-4 pb-2">
-          {wallets.map((wallet) => (
-            <Card
-              key={wallet.id}
-              className={`border-2 transition-all duration-200 cursor-pointer hover:shadow-md ${
-                wallet.id === selectedWallet?.id 
-                  ? "border-cyan-400 bg-cyan-50" 
-                  : "border-gray-200 bg-white hover:border-gray-300"
-              }`}
-              onClick={(e) => handleWalletClick(wallet, e)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        wallet.id === selectedWallet?.id ? "bg-cyan-400" : "bg-gray-200"
-                      }`}
-                    >
-                      <Wallet className={`w-5 h-5 ${wallet.id === selectedWallet?.id ? "text-white" : "text-gray-600"}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-900 text-sm truncate">{wallet.name}</div>
-                      <div className="text-xs text-gray-500">{wallet.balance.toFixed(4)} BTC</div>
-                      <div className="text-xs text-gray-500">${(wallet.balance * (bitcoinPrice || 0)).toLocaleString()}</div>
-                    </div>
-                  </div>
-                  
-                  {/* Action buttons - only show for non-selected wallets */}
-                  {wallet.id !== selectedWallet?.id && (
-                    <div className="flex items-center gap-2">
-                      {/* Export button - upper right */}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="w-8 h-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
-                        onClick={(e) => handleExportClick(wallet, e)}
-                        title="Export private key"
-                      >
-                        <Download className="w-4 h-4" />
-                      </Button>
-                      
-                      {/* Delete button - center right, only if more than 1 wallet */}
-                      {wallets.length > 1 && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="w-8 h-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={(e) => handleDeleteClick(wallet.id, e)}
-                          title="Delete wallet"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                
-                {/* Show selected indicator or click hint */}
-                {wallet.id === selectedWallet?.id ? (
-                  <div className="mt-3 text-center">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
-                      <Check className="w-3 h-3" />
-                      Active Wallet
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-3 text-center">
-                    <div className="text-xs text-gray-500">
-                      👆 Tap to switch to this wallet
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-
-          <Button
-            className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-xl h-12 text-sm font-medium"
-            onClick={() => navigateToPage('add-wallet')}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add New Wallet
-          </Button>
-        </div>
-
-        {/* Delete Confirmation Modal */}
-        {deleteConfirm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-sm">
-              <div className="text-center mb-4">
-                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Trash2 className="w-6 h-6 text-red-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Wallet</h3>
-                <p className="text-sm text-gray-600">
-                  Are you sure you want to delete this wallet? This action cannot be undone.
-                </p>
-              </div>
-              
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">!</span>
-                  </div>
-                  <span className="text-yellow-800 text-sm font-medium">Important</span>
-                </div>
-                <p className="text-yellow-700 text-xs">
-                  Make sure you have your seed phrase backed up. You can only recover this wallet with the seed phrase.
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setDeleteConfirm(null)}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={confirmDelete}
-                  className="flex-1 bg-red-500 hover:bg-red-600 text-white"
-                >
-                  Delete
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Private Key Export Modal */}
-        {showExportModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Export Private Key</h3>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={resetExportModal}
-                  className="w-8 h-8"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-
-              {!exportedKeys?.privateKey ? (
-                <>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs font-bold">⚠️</span>
-                      </div>
-                      <span className="text-red-800 text-sm font-medium">Security Warning</span>
-                    </div>
-                    <ul className="text-red-700 text-xs space-y-1">
-                      <li>• Never share your private key with anyone</li>
-                      <li>• Anyone with this key can steal your Bitcoin</li>
-                      <li>• Only export if you know what you're doing</li>
-                    </ul>
-                  </div>
-
-                  {exportError && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-                      <span className="text-red-800 text-sm">{exportError}</span>
-                    </div>
-                  )}
-
-                  <div className="mb-4">
-                    <label className="text-sm font-medium text-gray-700 block mb-2">
-                      Wallet: {exportedKeys?.targetWallet?.name || 'Select wallet'}
-                    </label>
-                    <div className="text-xs text-gray-500 mb-3">
-                      {exportedKeys?.targetWallet?.address}
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <label className="text-sm font-medium text-gray-700 block mb-2">
-                      Enter Seed Phrase
-                    </label>
-                    <textarea
-                      placeholder="Enter your seed phrase..."
-                      value={exportMnemonic}
-                      onChange={(e) => setExportMnemonic(e.target.value)}
-                      className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent font-mono"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={resetExportModal}
-                      className="flex-1"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={() => handlePrivateKeyExport(exportedKeys?.targetWallet)}
-                      disabled={!exportMnemonic.trim() || isExporting || !exportedKeys?.targetWallet}
-                      className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
-                    >
-                      {isExporting ? (
-                        <div className="flex items-center gap-2">
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Exporting...
-                        </div>
-                      ) : (
-                        'Export Key'
-                      )}
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="text-center mb-4">
-                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <Check className="w-6 h-6 text-green-600" />
-                    </div>
-                    <h4 className="font-medium text-gray-900 mb-1">Private Key Exported</h4>
-                    <p className="text-sm text-gray-600">Store this safely and securely</p>
-                  </div>
-
-                  <div className="space-y-3 mb-4">
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">Private Key (WIF):</label>
-                      <div className="bg-gray-50 p-2 rounded border font-mono text-xs break-all">
-                        {exportedKeys.privateKey}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">Public Key:</label>
-                      <div className="bg-gray-50 p-2 rounded border font-mono text-xs break-all">
-                        {exportedKeys.publicKey}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">Address:</label>
-                      <div className="bg-gray-50 p-2 rounded border font-mono text-xs break-all">
-                        {exportedKeys.address}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(exportedKeys.privateKey)
-                        alert('Private key copied to clipboard!')
-                      }}
-                      className="flex-1"
-                    >
-                      Copy Private Key
-                    </Button>
-                    <Button
-                      onClick={resetExportModal}
-                      className="flex-1 bg-cyan-400 hover:bg-cyan-500 text-white"
-                    >
-                      Done
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </>
-    )
-  }
-
-  // SEND PAGE COMPONENT
-  function SendPage() {
-    const [step, setStep] = useState<'input' | 'confirm' | 'mnemonic' | 'success' | 'error'>('input')
-    const [recipientAddress, setRecipientAddress] = useState('')
-    const [amount, setAmount] = useState('')
-    const [amountType, setAmountType] = useState<'btc' | 'usd'>('btc')
-    const [isSending, setIsSending] = useState(false)
-    const [transactionId, setTransactionId] = useState('')
-    const [error, setError] = useState('')
-    const [mnemonic, setMnemonic] = useState('')
-    const [mnemonicError, setMnemonicError] = useState('')
-
-    const resetSendForm = () => {
-      setStep('input')
-      setRecipientAddress('')
-      setAmount('')
-      setAmountType('btc')
-      setIsSending(false)
-      setTransactionId('')
-      setError('')
-      setMnemonic('')
-      setMnemonicError('')
-    }
-
-    const handleBackToInput = () => {
-      setStep('input')
-      setError('')
-      setMnemonic('')
-      setMnemonicError('')
-    }
-
-    const validateAndProceed = () => {
-      setError('')
-
-      // Validate recipient address
-      if (!recipientAddress.trim()) {
-        setError('Please enter a recipient address')
-        return
-      }
-
-      // Basic Bitcoin address validation (simplified)
-      const isValidAddress = /^[13mn][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(recipientAddress.trim())
-      if (!isValidAddress) {
-        setError('Invalid Bitcoin address format')
-        return
-      }
-
-      // Validate amount
-      const numAmount = parseFloat(amount)
-      if (!amount.trim() || isNaN(numAmount) || numAmount <= 0) {
-        setError('Please enter a valid amount')
-        return
-      }
-
-      // Convert to BTC if needed
-      const btcAmount = amountType === 'btc' ? numAmount : (bitcoinPrice ? numAmount / bitcoinPrice : 0)
-
-      // Check sufficient balance (including estimated fee)
-      const estimatedFee = 0.00001 // 0.00001 BTC estimated fee
-      const totalRequired = btcAmount + estimatedFee
-
-      if (totalRequired > activeWallet.balance) {
-        setError(`Insufficient balance. Required: ${totalRequired.toFixed(5)} BTC, Available: ${activeWallet.balance.toFixed(5)} BTC`)
-        return
-      }
-
-      setStep('mnemonic')
-    }
-
-    const handleMnemonicSubmit = () => {
-      setMnemonicError('')
-      
-      if (!mnemonic.trim()) {
-        setMnemonicError('Please enter your seed phrase')
-        return
-      }
-
-      // Validate mnemonic format (basic check)
-      const words = mnemonic.trim().split(' ')
-      if (words.length !== 12 && words.length !== 24) {
-        setMnemonicError('Seed phrase must be 12 or 24 words')
-        return
-      }
-
-      setStep('confirm')
-    }
-
-    const executeSend = async () => {
-      setIsSending(true)
-      setError('')
-
-      try {
-        // Convert amount to BTC
-        const btcAmount = amountType === 'btc' ? parseFloat(amount) : (bitcoinPrice ? parseFloat(amount) / bitcoinPrice : 0)
-
-        // 🌐 Real blockchain transaction
-        const signer = createTransactionSigner(activeWallet.network)
-        const blockchainService = getBlockchainService(activeWallet.network)
-        
-        // Get current fee estimates
-        const feeEstimates = await blockchainService.getFeeEstimates()
-        const feeRate = feeEstimates.halfHourFee // Use 30-minute confirmation fee
-        
-        // 🔑 Create and sign transaction with temporary key derivation
-        const signedTx = await signer.createAndSignTransaction(
-          mnemonic,
-          activeWallet.derivationPath,
-          recipientAddress.trim(),
-          btcAmount,
-          feeRate,
-          activeWallet.address
-        )
-        
-        // 📡 Broadcast transaction to blockchain
-        const txId = await blockchainService.broadcastTransaction(signedTx.txHex)
-        setTransactionId(txId)
-
-        // Create transaction record
-        const transaction: TransactionData = {
-          id: txId,
-          walletId: activeWallet.id,
-          type: 'sent',
-          amount: btcAmount,
-          address: recipientAddress.trim(),
-          timestamp: Date.now(),
-          confirmed: false,
-        }
-
-        // Add to storage
-        walletStorage.addTransaction(transaction)
-
-        // Calculate actual fee in BTC
-        const feeInBtc = signedTx.fee / 100000000
-
-        // Update wallet balance and transactions (will be refreshed from blockchain later)
-        const updatedWallet = {
-          ...activeWallet,
-          balance: activeWallet.balance - btcAmount - feeInBtc,
-          transactions: [
-            {
-              id: txId,
-              type: 'sent' as const,
-              amount: btcAmount,
-              date: new Date().toISOString(),
-              status: 'pending' as const,
-              to: recipientAddress.trim(),
-              txHash: txId
-            },
-            ...activeWallet.transactions
-          ]
-        }
-
-        handleUpdateWallet(updatedWallet)
-        
-        // 🔥 SECURITY: Clear mnemonic from memory
-        setMnemonic('')
-        
-        setStep('success')
-
-        // 🔄 Refresh wallet data from blockchain after 3 seconds
-        setTimeout(() => {
-          refreshWalletData(activeWallet).then(refreshedWallet => {
-            handleUpdateWallet(refreshedWallet)
-          })
-        }, 3000)
-
-        // Auto redirect after success
-        setTimeout(() => {
-          resetSendForm()
-          navigateToPage('home')
-        }, 5000)
-
-      } catch (err) {
-        console.error('Transaction error:', err)
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
-        setError(`Failed to send transaction: ${errorMessage}`)
-        setStep('error')
-      } finally {
-        setIsSending(false)
-      }
-    }
-
-    if (step === 'input') {
-      const numAmount = parseFloat(amount) || 0
-      // Convert to BTC using real-time price
-      const btcAmount = amountType === 'btc' ? numAmount : (bitcoinPrice ? numAmount / bitcoinPrice : 0)
-      // Convert to display currency  
-      const displayAmount = amountType === 'btc' ? (bitcoinPrice ? numAmount * bitcoinPrice : 0) : numAmount
-      const estimatedFee = 0.00001
-      const totalBtc = btcAmount + estimatedFee
-
-      return (
-        <div className="space-y-4">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">!</span>
-                </div>
-                <span className="text-red-800 text-sm">{error}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Balance Display */}
-          <div className="bg-cyan-50 rounded-lg p-3 mb-4">
-            <div className="text-center">
-              <div className="text-cyan-800 text-sm font-medium">Available Balance</div>
-              <div className="text-cyan-900 text-lg font-bold">{activeWallet.balance.toFixed(5)} BTC</div>
-              {bitcoinPrice && (
-                <div className="text-cyan-700 text-sm">${(activeWallet.balance * bitcoinPrice).toLocaleString()}</div>
-              )}
-            </div>
-          </div>
-
-          {/* Recipient Address */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-2">Recipient Address</label>
-            <input
-              type="text"
-              placeholder="Enter Bitcoin address (e.g., 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa)"
-              value={recipientAddress}
-              onChange={(e) => setRecipientAddress(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent font-mono"
-            />
-          </div>
-
-          {/* Amount Input */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-2">Amount</label>
-            <div className="relative">
-              <input
-                type="number"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full p-3 pr-20 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
-                step={amountType === 'btc' ? '0.00001' : '0.01'}
-              />
-              <div className="absolute inset-y-0 right-0 flex">
-                <button
-                  type="button"
-                  onClick={() => setAmountType('btc')}
-                  className={`px-3 rounded-r-lg text-xs font-medium ${
-                    amountType === 'btc' 
-                      ? 'bg-cyan-400 text-white' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  BTC
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAmountType('usd')}
-                  className={`px-3 text-xs font-medium ${
-                    amountType === 'usd' 
-                      ? 'bg-cyan-400 text-white' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  USD
-                </button>
-              </div>
-            </div>
             
-            {/* Amount conversion display */}
-            {amount && !isNaN(numAmount) && numAmount > 0 && bitcoinPrice && (
-              <div className="mt-2 text-sm text-gray-600">
-                ≈ {amountType === 'btc' 
-                  ? `$${displayAmount.toLocaleString()}` 
-                  : `${btcAmount.toFixed(5)} BTC`
-                }
+            {(!activeWallet.transactions || activeWallet.transactions.length === 0) && (
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100 text-center">
+                <div className="text-gray-500 text-sm">No transactions yet</div>
+                <div className="text-gray-400 text-xs mt-1">Your transactions will appear here</div>
               </div>
             )}
-          </div>
-
-          {/* Quick Amount Buttons */}
-          <div className="grid grid-cols-3 gap-2">
-            {[25, 50, 100].map(percent => {
-              const maxBtc = Math.max(0, activeWallet.balance - estimatedFee)
-              const btcAmount = (maxBtc * percent) / 100
-              return (
-                <Button
-                  key={percent}
-                  variant="outline"
-                  className="text-xs py-2"
-                  onClick={() => {
-                    setAmountType('btc')
-                    setAmount(btcAmount.toFixed(5))
-                  }}
-                  disabled={maxBtc <= 0}
-                >
-                  {percent}%
-                </Button>
-              )
-            })}
-          </div>
-
-          {/* Transaction Summary */}
-          {amount && !isNaN(numAmount) && numAmount > 0 && (
-            <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Amount:</span>
-                <span className="font-medium">{btcAmount.toFixed(5)} BTC</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Network Fee:</span>
-                <span className="font-medium">{estimatedFee.toFixed(5)} BTC</span>
-              </div>
-              <div className="border-t pt-2 flex justify-between font-medium">
-                <span>Total:</span>
-                <span>{totalBtc.toFixed(5)} BTC</span>
-              </div>
-              {totalBtc > activeWallet.balance && (
-                <div className="text-red-600 text-xs">Insufficient balance</div>
-              )}
-            </div>
-          )}
-
-          <Button
-            className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-12"
-            onClick={validateAndProceed}
-            disabled={!recipientAddress.trim() || !amount.trim() || totalBtc > activeWallet.balance}
-          >
-            Review Transaction
-          </Button>
-        </div>
-      )
-    }
-
-    if (step === 'mnemonic') {
-      return (
-        <div className="space-y-4 pb-2">
-          <Button
-            variant="ghost"
-            className="flex items-center gap-1 p-0 h-auto text-gray-600 hover:text-gray-900 text-sm mb-4"
-            onClick={handleBackToInput}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </Button>
-
-          {mnemonicError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">!</span>
-                </div>
-                <span className="text-red-800 text-sm">{mnemonicError}</span>
-              </div>
-            </div>
-          )}
-
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Send className="w-8 h-8 text-yellow-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Authorize Transaction</h3>
-            <p className="text-gray-600 text-sm">Enter your seed phrase to sign the transaction</p>
-          </div>
-
-          <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-3 mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-5 h-5 bg-cyan-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-xs font-bold">i</span>
-              </div>
-              <span className="text-cyan-800 text-sm font-medium">Why do we ask for this?</span>
-            </div>
-            <p className="text-cyan-700 text-xs">
-              For security, we never store your private keys. Your seed phrase is needed to temporarily generate the keys required to sign this transaction.
-            </p>
-          </div>
-
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-xs font-bold">!</span>
-              </div>
-              <span className="text-red-800 text-sm font-medium">Security Warning</span>
-            </div>
-            <p className="text-red-700 text-xs">
-              Never share your seed phrase with anyone. This app will never store it.
-            </p>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-2">Seed Phrase (12 or 24 words)</label>
-            <textarea
-              placeholder="Enter your seed phrase..."
-              value={mnemonic}
-              onChange={(e) => setMnemonic(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent font-mono"
-              rows={3}
-            />
-          </div>
-
-          <Button
-            className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-12"
-            onClick={handleMnemonicSubmit}
-            disabled={!mnemonic.trim()}
-          >
-            Continue to Confirm
-          </Button>
-        </div>
-      )
-    }
-
-    if (step === 'confirm') {
-      const numAmount = parseFloat(amount)
-      const btcAmount = amountType === 'btc' ? numAmount : (bitcoinPrice ? numAmount / bitcoinPrice : 0)
-      const estimatedFee = 0.00001
-      const totalBtc = btcAmount + estimatedFee
-
-      return (
-        <div className="space-y-4">
-          <Button
-            variant="ghost"
-            className="flex items-center gap-1 p-0 h-auto text-gray-600 hover:text-gray-900 text-sm mb-4"
-            onClick={handleBackToInput}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </Button>
-
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-cyan-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Send className="w-8 h-8 text-cyan-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm Transaction</h3>
-            <p className="text-gray-600 text-sm">Review the details before sending</p>
-          </div>
-
-          {/* Transaction Details */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-            <div>
-              <div className="text-xs text-gray-500 mb-1">To Address:</div>
-              <div className="font-mono text-sm text-gray-900 break-all">{recipientAddress}</div>
-            </div>
-            
-            <div className="border-t pt-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Amount:</span>
-                <div className="text-right">
-                  <div className="font-medium">{btcAmount.toFixed(5)} BTC</div>
-                  {bitcoinPrice && (
-                    <div className="text-xs text-gray-500">${(btcAmount * bitcoinPrice).toLocaleString()}</div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Network Fee:</span>
-              <div className="text-right">
-                <div className="font-medium">{estimatedFee.toFixed(5)} BTC</div>
-                {bitcoinPrice && (
-                  <div className="text-xs text-gray-500">${(estimatedFee * bitcoinPrice).toFixed(2)}</div>
-                )}
-              </div>
-            </div>
-
-            <div className="border-t pt-3 flex justify-between font-medium">
-              <span>Total Cost:</span>
-              <div className="text-right">
-                <div>{totalBtc.toFixed(5)} BTC</div>
-                {bitcoinPrice && (
-                  <div className="text-sm text-gray-600">${(totalBtc * bitcoinPrice).toLocaleString()}</div>
-                )}
-              </div>
-            </div>
-
-            <div className="border-t pt-3 flex justify-between text-sm">
-              <span className="text-gray-600">Remaining Balance:</span>
-              <span className="font-medium">{(activeWallet.balance - totalBtc).toFixed(5)} BTC</span>
-            </div>
-          </div>
-
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-xs font-bold">!</span>
-              </div>
-              <span className="text-yellow-800 text-sm font-medium">Important</span>
-            </div>
-            <p className="text-yellow-700 text-xs">
-              This transaction cannot be reversed. Make sure the address is correct.
-            </p>
-          </div>
-
-          <Button
-            className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-12"
-            onClick={executeSend}
-            disabled={isSending}
-          >
-            {isSending ? (
-              <div className="flex items-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Sending Transaction...
-              </div>
-            ) : (
-              'Send Bitcoin'
-            )}
-          </Button>
-        </div>
-      )
-    }
-
-    if (step === 'success') {
-      return (
-        <div className="text-center py-8">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Check className="w-8 h-8 text-green-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Transaction Sent!</h3>
-          <p className="text-gray-600 text-sm mb-4">Your Bitcoin has been sent successfully</p>
-          
-          <div className="bg-gray-50 rounded-lg p-3 mb-4">
-            <div className="text-xs text-gray-500 mb-1">Transaction ID:</div>
-            <div className="font-mono text-sm text-gray-900 break-all">{transactionId}</div>
-          </div>
-
-          <p className="text-gray-500 text-xs mb-4">
-            The transaction is being broadcast to the network. It may take a few minutes to confirm.
-          </p>
-
-          <Button
-            className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-10"
-            onClick={() => {
-              resetSendForm()
-              navigateToPage('home')
-            }}
-          >
-            Back to Home
-          </Button>
-        </div>
-      )
-    }
-
-    if (step === 'error') {
-      return (
-        <div className="text-center py-8">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <X className="w-8 h-8 text-red-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Transaction Failed</h3>
-          <p className="text-gray-600 text-sm mb-4">{error || 'An unknown error occurred'}</p>
-
-          <div className="space-y-2">
-            <Button
-              className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-10"
-              onClick={handleBackToInput}
-            >
-              Try Again
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full rounded-lg h-10"
-              onClick={() => {
-                resetSendForm()
-                navigateToPage('home')
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )
-    }
-
-    return null
-  }
-
-  // RECEIVE PAGE COMPONENT
-  function ReceivePage() {
-    const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('')
-    const [showQrCode, setShowQrCode] = useState(false)
-    const [qrLoading, setQrLoading] = useState(false)
-    
-    const currentNetwork = settings.network
-    const explorerUrl = currentNetwork === 'testnet' 
-      ? 'https://blockstream.info/testnet' 
-      : 'https://blockstream.info'
-
-    // Generate QR code for the address
-    const generateQRCode = async () => {
-      if (qrCodeDataUrl) {
-        setShowQrCode(true)
-        return
-      }
-      
-      setQrLoading(true)
-      try {
-        // Create Bitcoin URI for better wallet compatibility
-        const bitcoinUri = `bitcoin:${activeWallet.address}`
-        const qrDataUrl = await QRCode.toDataURL(bitcoinUri, {
-          width: 256,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          },
-          errorCorrectionLevel: 'M'
-        })
-        setQrCodeDataUrl(qrDataUrl)
-        setShowQrCode(true)
-      } catch (error) {
-        console.error('Error generating QR code:', error)
-        alert('Failed to generate QR code')
-      } finally {
-        setQrLoading(false)
-      }
-    }
-
-    return (
-      <div className="text-center py-8 pb-2">
-        <div className="w-16 h-16 bg-cyan-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <QrCode className="w-8 h-8 text-cyan-600" />
-        </div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Receive Bitcoin</h3>
-        <p className="text-gray-600 text-sm mb-6">
-          Scan QR code or copy address to receive Bitcoin
-        </p>
-
-        {/* QR Code Section */}
-        {!showQrCode ? (
-          <div className="mb-6">
-            <Button
-              onClick={generateQRCode}
-              disabled={qrLoading}
-              className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-12 mb-4"
-            >
-              {qrLoading ? (
-                <div className="flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Generating QR Code...
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <QrCode className="w-4 h-4" />
-                  Generate QR Code
-                </div>
-              )}
-            </Button>
-          </div>
-        ) : (
-          <div className="mb-6">
-            <div className="bg-white p-4 rounded-lg border-2 border-gray-200 inline-block mb-4">
-              <img 
-                src={qrCodeDataUrl} 
-                alt="Bitcoin Address QR Code" 
-                className="w-48 h-48 mx-auto"
-              />
-            </div>
-            <div className="flex gap-2 justify-center mb-4">
-              <Button
-                variant="outline"
-                onClick={() => setShowQrCode(false)}
-                className="text-sm"
-              >
-                Hide QR Code
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  // Create a temporary link to download the QR code
-                  const link = document.createElement('a')
-                  link.download = `bitcoin-address-${activeWallet.name}.png`
-                  link.href = qrCodeDataUrl
-                  link.click()
-                }}
-                className="text-sm"
-              >
-                <Download className="w-4 h-4 mr-1" />
-                Save QR Code
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Address Display */}
-        <div className="mb-6">
-          <p className="text-gray-600 text-sm mb-2">Your wallet address:</p>
-          <div className="bg-gray-50 p-4 rounded-lg mb-4">
-            <p className="text-xs font-mono break-all text-gray-700">{activeWallet.address}</p>
-          </div>
-        </div>
-        
-        {/* Action Buttons */}
-        <div className="space-y-3">
-          <Button 
-            className="w-full bg-orange-400 hover:bg-orange-500 text-white"
-            onClick={() => {
-              navigator.clipboard.writeText(activeWallet.address)
-              alert('Address copied to clipboard!')
-            }}
-          >
-            📋 Copy Address
-          </Button>
-          
-          <Button 
-            variant="outline"
-            className="w-full border-blue-200 text-blue-600 hover:bg-blue-50"
-            onClick={() => {
-              const explorerUrl = 'https://blockstream.info'
-              const url = `${explorerUrl}/address/${activeWallet.address}`
-              window.open(url, '_blank')
-            }}
-          >
-            🔍 Verify on Blockchain Explorer
-          </Button>
-          
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-xs font-bold">₿</span>
-              </div>
-              <span className="text-orange-800 text-sm font-medium">Mainnet Address</span>
-            </div>
-            <p className="text-orange-700 text-xs">
-              💰 This is a MAINNET address - send real Bitcoin here
-            </p>
           </div>
         </div>
       </div>
     )
   }
 
-  // SETTINGS PAGE COMPONENT
-  function SettingsPage() {
-    const [settingsStep, setSettingsStep] = useState<'main' | 'pin-setup'>('main')
-    const [pin, setPin] = useState('')
-    const [confirmPin, setConfirmPin] = useState('')
-    const [pinError, setPinError] = useState('')
-    const [showPin, setShowPin] = useState(false)
-    
-    // Add scroll to bottom function
-    const scrollToBottom = () => {
-      const container = document.querySelector('.settings-container')
-      if (container) {
-        container.scrollTop = container.scrollHeight
-      }
-    }
-
-    const handlePinSetup = () => {
-      setPinError('')
-      
-      if (pin.length !== 4) {
-        setPinError('PIN must be 4 digits')
-        return
-      }
-      
-      if (pin !== confirmPin) {
-        setPinError('PINs do not match')
-        return
-      }
-      
-      const newSettings = {
-        ...settings,
-        pinEnabled: true,
-        pinCode: pin
-      }
-      updateSettings(newSettings)
-      
-      setPin('')
-      setConfirmPin('')
-      setSettingsStep('main')
-      alert('PIN code set successfully!')
-    }
-
-    const handleSettingToggle = (key: string, value: any) => {
-      const newSettings = { ...settings, [key]: value }
-      updateSettings(newSettings)
-    }
-
-    if (settingsStep === 'pin-setup') {
-      return (
-        <div className="space-y-4">
-          <Button
-            variant="ghost"
-            className="flex items-center gap-1 p-0 h-auto text-gray-600 hover:text-gray-900 text-sm mb-4"
-            onClick={() => setSettingsStep('main')}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Settings
-          </Button>
-
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-cyan-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Settings className="w-8 h-8 text-cyan-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Setup PIN Code</h3>
-            <p className="text-gray-600 text-sm">Create a 4-digit PIN to secure your wallet</p>
-          </div>
-
-          {pinError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-              <span className="text-red-800 text-sm">{pinError}</span>
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-2">PIN Code</label>
-              <input
-                type={showPin ? 'text' : 'password'}
-                placeholder="Enter 4-digit PIN"
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent text-center text-lg tracking-widest"
-                maxLength={4}
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-2">Confirm PIN</label>
-              <input
-                type={showPin ? 'text' : 'password'}
-                placeholder="Confirm 4-digit PIN"
-                value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent text-center text-lg tracking-widest"
-                maxLength={4}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-700">Show PIN</span>
-              <button
-                onClick={() => setShowPin(!showPin)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  showPin ? 'bg-cyan-400' : 'bg-gray-200'
-                }`}
-                aria-label={showPin ? 'Hide PIN' : 'Show PIN'}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    showPin ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-
-            <Button
-              className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-12"
-              onClick={handlePinSetup}
-              disabled={!pin || !confirmPin}
-            >
-              Set PIN
-            </Button>
-          </div>
-        </div>
-      )
-    }
-
-    // Main Settings Page
-    return (
-      <div className="h-full flex flex-col">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-lg font-medium text-gray-900">Settings</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={scrollToBottom}
-            className="text-xs h-7 px-3"
-          >
-            ⬇️ Debug
-          </Button>
-        </div>
-        
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto space-y-4 pb-6">
-          {/* Security Section */}
-          <div>
-            <h3 className="text-gray-900 text-sm font-medium mb-3">Security</h3>
-            
-            <Card className="border-slate-200 rounded-lg">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900 text-sm">PIN Code</div>
-                    <div className="text-sm text-gray-500">
-                      {settings.pinEnabled ? 'PIN protection enabled' : 'Secure wallet with PIN'}
-                    </div>
-                  </div>
-                  <Button
-                    variant={settings.pinEnabled ? "outline" : "default"}
-                    className="text-sm h-9 px-4 ml-3"
-                    onClick={() => setSettingsStep('pin-setup')}
-                  >
-                    {settings.pinEnabled ? 'Change' : 'Setup'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Preferences Section */}
-          <div>
-            <h3 className="text-gray-900 text-sm font-medium mb-3">Preferences</h3>
-            
-            <Card className="border-slate-200 rounded-lg">
-              <CardContent className="p-4 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">Display Currency</label>
-                  <select
-                  value={settings.currency}
-                  onChange={(e) => handleSettingToggle('currency', e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  aria-label="Select display currency"
-                >
-                  <option value="USD">USD ($)</option>
-                  <option value="EUR">EUR (€)</option>
-                  <option value="GBP">GBP (£)</option>
-                  <option value="BTC">BTC (₿)</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="font-medium text-gray-900 text-sm">Notifications</div>
-                  <div className="text-xs text-gray-500">Transaction alerts</div>
-                </div>
-                <button
-                  onClick={() => handleSettingToggle('notifications', !settings.notifications)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ml-3 ${
-                    settings.notifications ? 'bg-cyan-400' : 'bg-gray-200'
-                  }`}
-                  aria-label={`${settings.notifications ? 'Disable' : 'Enable'} notifications`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      settings.notifications ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* About Section */}
-        <div>
-          <h3 className="text-gray-900 text-sm font-medium mb-3 px-1">About</h3>
-          
-          <Card className="border-slate-200 rounded-xl mb-3">
-            <CardContent className="p-4">
-              <div className="text-center">
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Image 
-                    src="/images/rabbit-logo.svg" 
-                    alt="Rabbit" 
-                    width={24} 
-                    height={24} 
-                    className="text-orange-600"
-                  />
-                </div>
-                <div className="font-medium text-gray-900">Rabbit</div>
-                <div className="text-sm text-gray-500">Version 1.0.0</div>
-                <p className="text-xs text-gray-500 mt-2">
-                  A secure, user-friendly Bitcoin wallet for real transactions
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-200 rounded-xl mb-3">
-            <CardContent className="p-4">
-              <Button
-                variant="outline"
-                className="w-full text-sm h-10 mb-3"
-                onClick={async () => {
-                  const seedPhrase = prompt('Enter a seed phrase to verify (⚠️ NEVER enter your real seed phrase here!)');
-                  if (!seedPhrase) return;
-                  
-                  console.clear()
-                  console.log('🔍 VERIFYING SEED PHRASE LEGITIMACY\n')
-                  
-                  // Check if it's a valid BIP39 mnemonic
-                  const isValid = isValidMnemonic(seedPhrase)
-                  console.log(`✅ BIP39 Valid: ${isValid}`)
-                  
-                  if (isValid) {
-                    console.log('\n📋 Testing address generation consistency...')
-                    await demonstrateKeyRegeneration(seedPhrase, 'mainnet')
-                    
-                    console.log('\n🎯 LEGITIMACY CHECK RESULTS:')
-                    console.log('✅ Seed phrase follows BIP39 standard')
-                    console.log('✅ Generates consistent addresses')
-                    console.log('✅ Compatible with all Bitcoin wallets')
-                    console.log('✅ This is a LEGITIMATE Bitcoin wallet!')
-                  } else {
-                    console.log('❌ Invalid seed phrase - not BIP39 compliant')
-                  }
-                  
-                  alert('Check browser console (F12) to see verification results!')
-                }}
-              >
-                🔍 Verify Seed Phrase Legitimacy
-              </Button>
-              
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
-                <h3 className="font-medium text-orange-800 mb-2">🐰 Educational Demo</h3>
-                <p className="text-orange-700 text-xs">
-                  This button demonstrates how the same seed phrase always generates identical keys, 
-                  proving that "burning" keys locally doesn't affect wallet recovery in other apps.
-                </p>
-              </div>
-              
-              <Button
-                variant="destructive"
-                className="w-full text-sm h-10"
-                onClick={() => {
-                  if (confirm('Are you sure you want to clear all wallet data? This cannot be undone.')) {
-                    walletStorage.clearAll()
-                    if (typeof window !== 'undefined') {
-                      localStorage.removeItem('rabbit-wallet-settings')
-                    }
-                    setWallets([])
-                    setSelectedWallet(null)
-                    setIsLocked(false)
-                    updateSettings({
-                      pinEnabled: false,
-                      pinCode: '',
-                      autoLockTime: 5,
-                      showBalance: true,
-                      currency: 'USD',
-                      network: 'mainnet',
-                      notifications: true
-                    })
-                    window.location.reload()
-                  }
-                }}
-              >
-                Clear All Data
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-  // ADD WALLET PAGE COMPONENT
   function AddWalletPage() {
     const [step, setStep] = useState<'method' | 'name' | 'seed-display' | 'seed-confirm' | 'import-seed' | 'success'>('method')
     const [walletMethod, setWalletMethod] = useState<'generate' | 'import'>('generate')
@@ -2305,6 +334,8 @@ export default function BitcoinWallet() {
     })
     const [isGenerating, setIsGenerating] = useState(false)
 
+    console.log('🎯 AddWalletPage function called and rendering, step:', step)
+
     const resetAndGoBack = () => {
       setStep('method')
       setWalletMethod('generate')
@@ -2315,15 +346,18 @@ export default function BitcoinWallet() {
       setImportSeed('')
       setCopied(false)
       setConfirmationsChecked({ stored: false, backup: false, responsibility: false })
-      navigateToPage('wallet')
+      navigateToPage('home')
     }
 
     const handleMethodSelect = (method: 'generate' | 'import') => {
+      console.log('Method selected:', method)
       setWalletMethod(method)
       setStep('name')
     }
 
     const handleNameSubmit = async () => {
+      console.log('Name submit, method:', walletMethod, 'name:', walletName)
+      
       if (!walletName.trim()) {
         alert('Please enter a wallet name')
         return
@@ -2332,12 +366,17 @@ export default function BitcoinWallet() {
       if (walletMethod === 'generate') {
         setIsGenerating(true)
         try {
-          // Direct function call - static import at top of file
-          const network = (settings.network as 'testnet' | 'mainnet') || 'mainnet'
+          console.log('Generating wallet...')
+          const network = 'mainnet'
+          
+          // Import the wallet generation functions
+          const { generateBitcoinWallet } = await import('@/lib/bitcoin-wallet')
           const wallet = await generateBitcoinWallet(network)
+          console.log('Wallet generated:', wallet)
           setGeneratedWallet(wallet)
           setStep('seed-display')
         } catch (error) {
+          console.error('Error generating wallet:', error)
           alert(`Error generating wallet: ${error instanceof Error ? error.message : 'Unknown error'}`)
         } finally {
           setIsGenerating(false)
@@ -2380,14 +419,17 @@ export default function BitcoinWallet() {
       
       setIsGenerating(true)
       try {
+        const { isValidMnemonic, importWalletFromMnemonic } = await import('@/lib/bitcoin-wallet')
+        
         if (!isValidMnemonic(importSeed)) {
           throw new Error('Invalid seed phrase format')
         }
         
-        const network = (settings.network as 'testnet' | 'mainnet') || 'mainnet'
+        const network = 'mainnet'
         const wallet = await importWalletFromMnemonic(importSeed, network)
         createWallet(wallet)
       } catch (error) {
+        console.error('Error importing wallet:', error)
         alert(`Error importing wallet: ${error instanceof Error ? error.message : 'Unknown error'}`)
       } finally {
         setIsGenerating(false)
@@ -2395,8 +437,10 @@ export default function BitcoinWallet() {
     }
 
     const createWallet = (walletData: any) => {
-      // 🔐 SECURE: Only store public data - NO private keys or seed phrases
-      const newWallet: WalletData = {
+      console.log('Creating wallet with data:', walletData)
+      
+      // Create new wallet object
+      const newWallet = {
         id: `wallet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         name: walletName,
         address: walletData.address,
@@ -2407,15 +451,14 @@ export default function BitcoinWallet() {
         createdAt: Date.now()
       }
       
+      console.log('New wallet created:', newWallet)
+      
       const updatedWallets = [...wallets, newWallet]
       setWallets(updatedWallets)
       setSelectedWallet(newWallet)
       
-      // 🔥 SECURITY: Clear the mnemonic from memory - user has already been shown it
-      if (generatedWallet?.mnemonic) {
-        const { clearSensitiveData } = require('@/lib/bitcoin-wallet')
-        clearSensitiveData(generatedWallet)
-      }
+      // Save to localStorage
+      walletStorage.saveWallets(updatedWallets)
       
       setStep('success')
       
@@ -2424,19 +467,27 @@ export default function BitcoinWallet() {
       }, 2000)
     }
 
+    // Method selection step
     if (step === 'method') {
+      console.log('Rendering method selection')
       return (
         <div className="space-y-4 pb-2">
-          <p className="text-gray-600 text-sm mb-4">Choose how you'd like to add your wallet:</p>
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Plus className="w-8 h-8 text-orange-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Add New Wallet</h2>
+            <p className="text-gray-600 text-sm">Choose how you'd like to add your wallet:</p>
+          </div>
           
           <Button
             variant="outline"
-            className="w-full p-4 h-auto rounded-lg border-2 hover:border-cyan-400 hover:bg-cyan-50"
+            className="w-full p-4 h-auto rounded-lg border-2 hover:border-orange-400 hover:bg-orange-50"
             onClick={() => handleMethodSelect('generate')}
           >
             <div className="flex items-center">
-              <div className="w-12 h-12 bg-cyan-100 rounded-full flex items-center justify-center mr-4">
-                <Plus className="w-6 h-6 text-cyan-600" />
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mr-4">
+                <Plus className="w-6 h-6 text-orange-600" />
               </div>
               <div className="text-left">
                 <div className="font-medium text-gray-900">Create New Wallet</div>
@@ -2447,7 +498,7 @@ export default function BitcoinWallet() {
 
           <Button
             variant="outline"
-            className="w-full p-4 h-auto rounded-lg border-2 hover:border-cyan-400 hover:bg-cyan-50"
+            className="w-full p-4 h-auto rounded-lg border-2 hover:border-orange-400 hover:bg-orange-50"
             onClick={() => handleMethodSelect('import')}
           >
             <div className="flex items-center">
@@ -2464,17 +515,18 @@ export default function BitcoinWallet() {
       )
     }
 
+    // Name input step
     if (step === 'name') {
+      console.log('Rendering name input')
       return (
         <div className="space-y-4 pb-2">
-          <Button
-            variant="ghost"
-            className="flex items-center gap-1 p-0 h-auto text-gray-600 hover:text-gray-900 text-sm mb-4"
-            onClick={() => setStep('method')}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </Button>
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Wallet className="w-8 h-8 text-orange-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Name Your Wallet</h2>
+            <p className="text-gray-600 text-sm">Choose a name to identify this wallet</p>
+          </div>
 
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-2">Wallet Name</label>
@@ -2483,12 +535,13 @@ export default function BitcoinWallet() {
               placeholder="Enter a name for your wallet"
               value={walletName}
               onChange={(e) => setWalletName(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
+              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+              autoFocus
             />
           </div>
 
           <Button
-            className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-12"
+            className="w-full bg-orange-400 hover:bg-orange-500 text-white rounded-lg h-12"
             onClick={handleNameSubmit}
             disabled={isGenerating || !walletName.trim()}
           >
@@ -2505,80 +558,117 @@ export default function BitcoinWallet() {
       )
     }
 
-    if (step === 'seed-display' && generatedWallet) {
+    // Seed phrase display step (for new wallets)
+    if (step === 'seed-display') {
+      console.log('Rendering seed display')
       return (
         <div className="space-y-4 pb-2">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Shield className="w-8 h-8 text-red-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Your Seed Phrase</h2>
+            <p className="text-gray-600 text-sm">Write down these 12 words in order and store them safely</p>
+          </div>
+
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
                 <span className="text-white text-xs font-bold">!</span>
               </div>
-              <span className="text-red-800 text-sm font-medium">Security Warning</span>
+              <span className="text-red-800 text-sm font-medium">Critical Security Warning</span>
             </div>
-            <p className="text-red-700 text-xs">
-              Your seed phrase is the only way to recover your wallet. Store it safely offline.
-            </p>
+            <ul className="text-red-700 text-xs space-y-1">
+              <li>• This is the ONLY way to recover your Bitcoin</li>
+              <li>• Anyone with this phrase can steal your funds</li>
+              <li>• We never store these words - only you have them</li>
+              <li>• Losing this phrase means losing your Bitcoin forever</li>
+            </ul>
           </div>
 
-          <div className="text-center mb-4">
-            <h3 className="font-semibold text-gray-900 mb-2">Your Seed Phrase</h3>
-            <p className="text-gray-600 text-sm">Write down these 12 words in order and store them safely</p>
-          </div>
-
-          <div className={`bg-gray-50 p-4 rounded-lg transition-all duration-300 ${!seedVisible ? 'blur-md' : ''}`}>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              {generatedWallet.mnemonic.split(' ').map((word: string, index: number) => (
-                <div key={index} className="flex items-center gap-2 p-2 bg-white rounded border">
-                  <span className="text-gray-400 text-xs w-4">{index + 1}</span>
-                  <span className="font-mono text-gray-900">{word}</span>
+          {generatedWallet && (
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-sm font-medium text-gray-700">Seed Phrase</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSeedVisible(!seedVisible)}
+                  className="text-xs"
+                >
+                  {seedVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {seedVisible ? 'Hide' : 'Show'}
+                </Button>
+              </div>
+              
+              {seedVisible ? (
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {generatedWallet.mnemonic.split(' ').map((word: string, i: number) => (
+                    <div key={i} className="bg-white rounded p-2 text-center border">
+                      <div className="text-xs text-gray-500">{i + 1}</div>
+                      <div className="font-mono text-sm">{word}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Eye className="w-8 h-8 mx-auto mb-2" />
+                  <p className="text-sm">Click "Show" to view your seed phrase</p>
+                </div>
+              )}
 
-          {!seedVisible ? (
-            <Button
-              className="w-full bg-gray-600 hover:bg-gray-700 text-white rounded-lg h-10"
-              onClick={() => setSeedVisible(true)}
-            >
-              Tap to reveal seed phrase
-            </Button>
-          ) : (
-            <div className="space-y-3">
               <Button
                 variant="outline"
-                className="w-full rounded-lg h-10"
+                className="w-full text-sm"
                 onClick={handleSeedCopy}
+                disabled={!seedVisible}
               >
-                {copied ? 'Copied!' : 'Copy to clipboard'}
-              </Button>
-              <Button
-                className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-10"
-                onClick={() => setStep('seed-confirm')}
-              >
-                I've saved my seed phrase
+                {copied ? (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy to Clipboard
+                  </>
+                )}
               </Button>
             </div>
           )}
+
+          <Button
+            className="w-full bg-orange-400 hover:bg-orange-500 text-white rounded-lg h-12"
+            onClick={() => setStep('seed-confirm')}
+            disabled={!seedVisible}
+          >
+            I've Stored My Seed Phrase Safely
+          </Button>
         </div>
       )
     }
 
-    if (step === 'seed-confirm' && generatedWallet) {
-      const words = generatedWallet.mnemonic.split(' ')
+    // Seed phrase confirmation step
+    if (step === 'seed-confirm') {
+      console.log('Rendering seed confirmation')
+      const words = generatedWallet?.mnemonic.split(' ') || []
       const randomIndices = [2, 5, 8] // Check 3rd, 6th, and 9th words
-
+      
       return (
         <div className="space-y-4 pb-2">
-          <div className="text-center mb-4">
-            <h3 className="font-semibold text-gray-900 mb-2">Verify Your Seed Phrase</h3>
-            <p className="text-gray-600 text-sm">Enter the missing words to confirm you saved your seed phrase</p>
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Check className="w-8 h-8 text-orange-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Confirm Your Seed Phrase</h2>
+            <p className="text-gray-600 text-sm">Enter the requested words to verify you wrote them down correctly</p>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4 mb-6">
             {randomIndices.map((wordIndex, i) => (
               <div key={i}>
-                <label className="text-sm text-gray-700 block mb-1">
+                <label className="text-sm font-medium text-gray-700 block mb-2">
                   Word #{wordIndex + 1}
                 </label>
                 <input
@@ -2590,37 +680,41 @@ export default function BitcoinWallet() {
                     newWords[i] = e.target.value
                     setConfirmationWords(newWords)
                   }}
-                  className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
+                  className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                 />
               </div>
             ))}
           </div>
 
-          <div className="space-y-2">
-            {Object.entries(confirmationsChecked).map(([key, checked]) => (
-              <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+          <div className="space-y-3 mb-6">
+            {[
+              { key: 'stored', text: 'I have written down my seed phrase and stored it safely' },
+              { key: 'backup', text: 'I understand this is the only way to recover my wallet' },
+              { key: 'responsibility', text: 'I take full responsibility for keeping my seed phrase secure' }
+            ].map(({ key, text }) => (
+              <label key={key} className="flex items-start gap-3 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={checked}
-                  onChange={(e) => setConfirmationsChecked(prev => ({
-                    ...prev,
+                  checked={confirmationsChecked[key as keyof typeof confirmationsChecked]}
+                  onChange={(e) => setConfirmationsChecked({
+                    ...confirmationsChecked,
                     [key]: e.target.checked
-                  }))}
-                  className="w-4 h-4 text-cyan-400 rounded focus:ring-cyan-400"
+                  })}
+                  className="mt-1 w-4 h-4 text-orange-600 rounded focus:ring-orange-400"
                 />
-                <span className="text-gray-700">
-                  {key === 'stored' ? 'I have stored my seed phrase securely' :
-                   key === 'backup' ? 'I understand this is my only backup' :
-                   'I take full responsibility for my wallet security'}
-                </span>
+                <span className="text-sm text-gray-700">{text}</span>
               </label>
             ))}
           </div>
 
           <Button
-            className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-12"
+            className="w-full bg-orange-400 hover:bg-orange-500 text-white rounded-lg h-12"
             onClick={handleSeedConfirm}
-            disabled={!Object.values(confirmationsChecked).every(Boolean)}
+            disabled={
+              !randomIndices.every((index, i) => 
+                confirmationWords[i].toLowerCase().trim() === words[index]
+              ) || !Object.values(confirmationsChecked).every(Boolean)
+            }
           >
             Create Wallet
           </Button>
@@ -2628,41 +722,54 @@ export default function BitcoinWallet() {
       )
     }
 
+    // Import seed phrase step
     if (step === 'import-seed') {
+      console.log('Rendering import seed')
       return (
         <div className="space-y-4 pb-2">
-          <Button
-            variant="ghost"
-            className="flex items-center gap-1 p-0 h-auto text-gray-600 hover:text-gray-900 text-sm mb-4"
-            onClick={() => setStep('name')}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </Button>
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Download className="w-8 h-8 text-blue-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Import Wallet</h2>
+            <p className="text-gray-600 text-sm">Enter your existing seed phrase to restore your wallet</p>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                <span className="text-white text-xs font-bold">i</span>
+              </div>
+              <span className="text-blue-800 text-sm font-medium">Import Instructions</span>
+            </div>
+            <ul className="text-blue-700 text-xs space-y-1">
+              <li>• Enter your 12 or 24 word seed phrase</li>
+              <li>• Separate each word with a space</li>
+              <li>• Make sure the words are in the correct order</li>
+              <li>• This will restore all associated addresses and funds</li>
+            </ul>
+          </div>
 
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-2">Seed Phrase</label>
             <textarea
-              placeholder="Enter your 12 or 24 word seed phrase..."
+              placeholder="Enter your seed phrase (12 or 24 words)..."
               value={importSeed}
               onChange={(e) => setImportSeed(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent font-mono"
               rows={4}
-              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent resize-none"
             />
-            <p className="text-gray-500 text-xs mt-1">
-              Enter each word separated by spaces
-            </p>
           </div>
 
           <Button
-            className="w-full bg-cyan-400 hover:bg-cyan-500 text-white rounded-lg h-12"
+            className="w-full bg-orange-400 hover:bg-orange-500 text-white rounded-lg h-12"
             onClick={handleImportSubmit}
             disabled={isGenerating || !importSeed.trim()}
           >
             {isGenerating ? (
               <div className="flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                Importing...
+                Importing Wallet...
               </div>
             ) : (
               'Import Wallet'
@@ -2672,6 +779,7 @@ export default function BitcoinWallet() {
       )
     }
 
+    // Success step
     if (step === 'success') {
       return (
         <div className="text-center py-8 pb-2">
@@ -2679,11 +787,1335 @@ export default function BitcoinWallet() {
             <Check className="w-8 h-8 text-green-600" />
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Wallet Created!</h3>
-          <p className="text-gray-600 text-sm">Your new wallet has been added successfully</p>
+          <p className="text-gray-600 text-sm mb-4">Your new wallet "{walletName}" has been added successfully</p>
+          
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+            <p className="text-green-800 text-sm">
+              🎉 You can now send and receive Bitcoin with your new wallet
+            </p>
+          </div>
         </div>
       )
     }
 
-    return null
+    // Default fallback
+    return (
+      <div className="space-y-4 pb-2">
+        <div className="text-center">
+          <p className="text-gray-600">Loading wallet creation...</p>
+        </div>
+      </div>
+    )
   }
-}
+
+  function WalletPage() { 
+    const [isRefreshingBalances, setIsRefreshingBalances] = useState(false)
+    const [exportWalletId, setExportWalletId] = useState<string | null>(null)
+    const [exportMnemonic, setExportMnemonic] = useState('')
+    const [exportedKey, setExportedKey] = useState('')
+    const [isExporting, setIsExporting] = useState(false)
+
+    const refreshWalletBalances = async () => {
+      if (wallets.length === 0) return
+      
+      setIsRefreshingBalances(true)
+      try {
+        const { getBlockchainService } = await import('@/lib/blockchain-service')
+        
+        const updatedWallets = await Promise.all(
+          wallets.map(async (wallet) => {
+            try {
+              const service = getBlockchainService(wallet.network || 'mainnet')
+              const balance = await service.getAddressBalance(wallet.address)
+              const transactions = await service.getAddressTransactions(wallet.address)
+              
+              return {
+                ...wallet,
+                balance: balance.total,
+                transactions: transactions.slice(0, 10)
+              }
+            } catch (error) {
+              console.error(`Failed to refresh wallet ${wallet.name}:`, error)
+              return wallet
+            }
+          })
+        )
+        
+        setWallets(updatedWallets)
+        walletStorage.saveWallets(updatedWallets)
+        
+        if (selectedWallet) {
+          const updated = updatedWallets.find(w => w.id === selectedWallet.id)
+          if (updated) setSelectedWallet(updated)
+        }
+      } catch (error) {
+        console.error('Failed to refresh balances:', error)
+      } finally {
+        setIsRefreshingBalances(false)
+      }
+    }
+
+    const exportPrivateKey = async (wallet: WalletData) => {
+      if (!exportMnemonic.trim()) {
+        alert('Please enter your seed phrase')
+        return
+      }
+
+      setIsExporting(true)
+      try {
+        const { exportPrivateKey: exportKey } = await import('@/lib/bitcoin-wallet')
+        const result = await exportKey(
+          exportMnemonic,
+          wallet.derivationPath || "m/44'/0'/0'/0/0",
+          wallet.network || 'mainnet',
+          wallet.address
+        )
+        setExportedKey(result.privateKey)
+      } catch (error) {
+        alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      } finally {
+        setIsExporting(false)
+      }
+    }
+    
+    return (
+      <div className="h-full flex flex-col">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6 px-1">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Wallets</h2>
+            <p className="text-sm text-gray-500">{wallets.length} wallet{wallets.length !== 1 ? 's' : ''}</p>
+          </div>
+          <button
+            onClick={refreshWalletBalances}
+            disabled={isRefreshingBalances}
+            className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 active:scale-95 transition-all"
+            aria-label="Refresh wallet balances"
+          >
+            <RefreshCw className={`w-4 h-4 text-gray-600 ${isRefreshingBalances ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+
+        {/* Scrollable wallet list */}
+        <div className="flex-1 overflow-y-auto space-y-3 -mx-4 px-4">
+          {wallets.map((wallet) => (
+            <div key={wallet.id} className={`bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border transition-all ${
+              selectedWallet?.id === wallet.id 
+                ? 'border-cyan-200 bg-cyan-50/80' 
+                : 'border-gray-100 hover:border-gray-200'
+            }`}>
+              <button
+                className="w-full p-4 text-left"
+                onClick={() => setSelectedWallet(wallet)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      selectedWallet?.id === wallet.id 
+                        ? 'bg-gradient-to-br from-cyan-100 to-cyan-200' 
+                        : 'bg-gradient-to-br from-gray-100 to-gray-200'
+                    }`}>
+                      <Wallet className={`w-5 h-5 ${
+                        selectedWallet?.id === wallet.id ? 'text-cyan-600' : 'text-gray-600'
+                      }`} />
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-900">{wallet.name}</div>
+                      <div className="text-sm text-gray-500">{wallet.balance.toFixed(6)} BTC</div>
+                      <div className="text-xs text-gray-400">
+                        {bitcoinPrice ? formatCurrency(wallet.balance * bitcoinPrice) : '...'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500 capitalize">{wallet.network}</div>
+                    <div className="text-xs text-gray-400">
+                      {wallet.transactions?.length || 0} txs
+                    </div>
+                    {selectedWallet?.id === wallet.id && (
+                      <div className="w-2 h-2 bg-cyan-500 rounded-full mt-1 ml-auto"></div>
+                    )}
+                  </div>
+                </div>
+              </button>
+              
+              {/* Export button for each wallet */}
+              <div className="px-4 pb-4">
+                <button
+                  onClick={() => setExportWalletId(wallet.id)}
+                  className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl py-2 text-xs font-medium active:scale-95 transition-all"
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <Key className="w-3 h-3" />
+                    <span>Export Private Key</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {wallets.length === 0 && (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Wallet className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Wallets Yet</h3>
+              <p className="text-gray-500 text-sm mb-6">Create your first Bitcoin wallet to get started</p>
+            </div>
+          )}
+        </div>
+
+        {/* Add wallet button - fixed at bottom */}
+        <div className="pt-4 mt-4 border-t border-gray-100">
+          <button
+            className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium shadow-sm active:scale-95 transition-transform"
+            onClick={() => navigateToPage('add-wallet')}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Plus className="w-4 h-4" />
+              <span>Add Wallet</span>
+            </div>
+          </button>
+        </div>
+
+        {/* Export Modal */}
+        {exportWalletId && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl max-w-sm w-full max-h-[80vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-semibold">Export Private Key</h3>
+                  <button
+                    onClick={() => {
+                      setExportWalletId(null)
+                      setExportMnemonic('')
+                      setExportedKey('')
+                    }}
+                    className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                  >
+                    <span className="text-gray-600">✕</span>
+                  </button>
+                </div>
+
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6">
+                  <div className="text-red-800 text-sm">
+                    <strong>⚠️ Security Warning</strong><br />
+                    Never share your private key. Anyone with access can steal your Bitcoin.
+                  </div>
+                </div>
+
+                {!exportedKey ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-2">
+                        Seed Phrase for {wallets.find(w => w.id === exportWalletId)?.name}
+                      </label>
+                      <textarea
+                        placeholder="Enter your 12 or 24 word seed phrase..."
+                        value={exportMnemonic}
+                        onChange={(e) => setExportMnemonic(e.target.value)}
+                        className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent font-mono resize-none"
+                        rows={3}
+                      />
+                    </div>
+
+                    <button
+                      className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium disabled:opacity-50 active:scale-95 transition-all"
+                      onClick={() => {
+                        const wallet = wallets.find(w => w.id === exportWalletId)
+                        if (wallet) exportPrivateKey(wallet)
+                      }}
+                      disabled={isExporting || !exportMnemonic.trim()}
+                    >
+                      {isExporting ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Exporting...</span>
+                        </div>
+                      ) : (
+                        'Export Private Key'
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 block mb-2">
+                        Private Key
+                      </label>
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 font-mono text-xs break-all">
+                        {exportedKey}
+                      </div>
+                    </div>
+
+                    <button
+                      className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all"
+                      onClick={() => {
+                        navigator.clipboard.writeText(exportedKey)
+                        alert('Private key copied to clipboard')
+                      }}
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        <Copy className="w-4 h-4" />
+                        <span>Copy Private Key</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+  
+  function SendPage() { 
+    const [recipientAddress, setRecipientAddress] = useState('')
+    const [amount, setAmount] = useState('')
+    const [amountUSD, setAmountUSD] = useState('')
+    const [useUSD, setUseUSD] = useState(false)
+    const [fee, setFee] = useState(10) // sat/vbyte
+    const [mnemonic, setMnemonic] = useState('')
+    const [isSending, setIsSending] = useState(false)
+    const [showSeedInput, setShowSeedInput] = useState(false)
+    const [txResult, setTxResult] = useState<any>(null)
+    const [error, setError] = useState('')
+
+    const sendTransaction = async () => {
+      if (!activeWallet || !mnemonic.trim()) {
+        setError('Please enter your seed phrase')
+        return
+      }
+
+      setIsSending(true)
+      setError('')
+      
+      try {
+        const { createTransactionSigner } = await import('@/lib/transaction-signer')
+        const { isValidMnemonic } = await import('@/lib/bitcoin-wallet')
+        
+        if (!isValidMnemonic(mnemonic)) {
+          throw new Error('Invalid seed phrase')
+        }
+
+        const signer = createTransactionSigner(activeWallet.network || 'mainnet')
+        const amountBTC = useUSD && bitcoinPrice ? parseFloat(amountUSD) / bitcoinPrice : parseFloat(amount)
+        
+        const signedTx = await signer.createAndSignTransaction(
+          mnemonic,
+          activeWallet.derivationPath || "m/44'/0'/0'/0/0",
+          recipientAddress,
+          amountBTC,
+          fee,
+          activeWallet.address
+        )
+
+        const { getBlockchainService } = await import('@/lib/blockchain-service')
+        const service = getBlockchainService(activeWallet.network || 'mainnet')
+        const txid = await service.broadcastTransaction(signedTx.txHex)
+
+        setTxResult({ txid, amount: amountBTC, recipient: recipientAddress })
+        
+        // Clear sensitive data
+        setMnemonic('')
+        setRecipientAddress('')
+        setAmount('')
+        setAmountUSD('')
+
+        // Refresh wallet balance
+        setTimeout(() => {
+          if (activeWallet) {
+            service.getAddressBalance(activeWallet.address).then(balance => {
+              const updatedWallets = wallets.map(w => 
+                w.id === activeWallet.id ? { ...w, balance: balance.total } : w
+              )
+              setWallets(updatedWallets)
+              setSelectedWallet({ ...activeWallet, balance: balance.total })
+              walletStorage.saveWallets(updatedWallets)
+            })
+          }
+        }, 2000)
+
+      } catch (error) {
+        console.error('Transaction failed:', error)
+        setError(error instanceof Error ? error.message : 'Transaction failed')
+      } finally {
+        setIsSending(false)
+        setMnemonic('')
+      }
+    }
+
+    const canSend = recipientAddress.trim() && amount && parseFloat(amount) > 0 && activeWallet && parseFloat(amount) <= activeWallet.balance
+
+    if (!activeWallet) {
+      return (
+        <div className="h-full flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Send className="w-6 h-6 text-gray-400" />
+            </div>
+            <p className="text-gray-500 text-sm">No wallet selected</p>
+          </div>
+        </div>
+      )
+    }
+
+    // Success state
+    if (txResult) {
+      return (
+        <div className="h-full flex items-center justify-center px-6">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Check className="w-8 h-8 text-cyan-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Sent Successfully!</h3>
+            <p className="text-gray-500 text-sm mb-6">Your Bitcoin has been sent</p>
+            
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 mb-6 border border-gray-100">
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Amount</span>
+                  <span className="font-medium">{txResult.amount.toFixed(6)} BTC</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">TX ID</span>
+                  <span className="font-mono text-xs">{txResult.txid.slice(0,8)}...{txResult.txid.slice(-8)}</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all"
+              onClick={() => {
+                setTxResult(null)
+                setShowSeedInput(false)
+              }}
+            >
+              Send Another
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="h-full flex flex-col">
+        {/* Wallet Info */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 mb-4 border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium text-gray-900">{activeWallet.name}</div>
+              <div className="text-xs text-gray-500">{activeWallet.balance.toFixed(6)} BTC available</div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-medium text-gray-900">
+                {bitcoinPrice ? formatCurrency(activeWallet.balance * bitcoinPrice) : '...'}
+              </div>
+              <div className="text-xs text-gray-500">Balance</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Form */}
+        <div className="flex-1 space-y-4">
+          {/* Recipient */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100">
+            <label className="text-sm font-medium text-gray-700 block mb-2">To</label>
+            <input
+              type="text"
+              placeholder="Bitcoin address"
+              value={recipientAddress}
+              onChange={(e) => setRecipientAddress(e.target.value)}
+              className="w-full text-sm bg-transparent border-0 outline-0 font-mono placeholder-gray-400"
+            />
+          </div>
+
+          {/* Amount */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-700">Amount</label>
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setUseUSD(false)}
+                  className={`px-3 py-1 text-xs font-medium rounded ${
+                    !useUSD ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                  }`}
+                >
+                  BTC
+                </button>
+                <button
+                  onClick={() => setUseUSD(true)}
+                  className={`px-3 py-1 text-xs font-medium rounded ${
+                    useUSD ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                  }`}
+                  disabled={!bitcoinPrice}
+                >
+                  USD
+                </button>
+              </div>
+            </div>
+            
+            <input
+              type="number"
+              placeholder={useUSD ? "0.00" : "0.00000000"}
+              value={useUSD ? amountUSD : amount}
+              onChange={(e) => {
+                if (useUSD) {
+                  setAmountUSD(e.target.value)
+                  if (bitcoinPrice && e.target.value) {
+                    setAmount((parseFloat(e.target.value) / bitcoinPrice).toString())
+                  }
+                } else {
+                  setAmount(e.target.value)
+                  if (bitcoinPrice && e.target.value) {
+                    setAmountUSD((parseFloat(e.target.value) * bitcoinPrice).toString())
+                  }
+                }
+              }}
+              className="w-full text-lg font-medium bg-transparent border-0 outline-0 placeholder-gray-400"
+            />
+            
+            {amount && bitcoinPrice && (
+              <div className="text-xs text-gray-500 mt-1">
+                ≈ {useUSD ? `${parseFloat(amount).toFixed(6)} BTC` : formatCurrency(parseFloat(amount) * bitcoinPrice)}
+              </div>
+            )}
+          </div>
+
+          {/* Fee */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-700">Network Fee</label>
+              <span className="text-sm text-gray-500">{fee} sat/vB</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="50"
+              value={fee}
+              onChange={(e) => setFee(parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+              style={{
+                background: `linear-gradient(to right, #06b6d4 0%, #06b6d4 ${(fee-1)/49*100}%, #e5e7eb ${(fee-1)/49*100}%, #e5e7eb 100%)`
+              }}
+              aria-label="Network fee in satoshis per vbyte"
+              title="Adjust network fee for transaction priority"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>Slow</span>
+              <span>Fast</span>
+            </div>
+          </div>
+
+          {/* Seed Input Toggle */}
+          {canSend && !showSeedInput && (
+            <button
+              onClick={() => setShowSeedInput(true)}
+              className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all"
+            >
+              Continue
+            </button>
+          )}
+
+          {/* Seed Input */}
+          {showSeedInput && (
+            <div className="space-y-4">
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100">
+                <label className="text-sm font-medium text-gray-700 block mb-2">Seed Phrase</label>
+                <textarea
+                  placeholder="Enter your seed phrase to sign the transaction..."
+                  value={mnemonic}
+                  onChange={(e) => setMnemonic(e.target.value)}
+                  className="w-full h-20 text-sm bg-transparent border-0 outline-0 font-mono placeholder-gray-400 resize-none"
+                  rows={3}
+                />
+              </div>
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-3">
+                  <p className="text-red-800 text-sm">{error}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowSeedInput(false)}
+                  className="flex-1 bg-gray-100 text-gray-700 rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={sendTransaction}
+                  disabled={!mnemonic.trim() || isSending}
+                  className="flex-1 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  {isSending ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Sending...</span>
+                    </div>
+                  ) : (
+                    'Send Bitcoin'
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+  
+  function ReceivePage() { 
+    const [copied, setCopied] = useState(false)
+
+    const copyAddress = () => {
+      if (activeWallet) {
+        navigator.clipboard.writeText(activeWallet.address)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
+    }
+
+    if (!activeWallet) {
+      return (
+        <div className="h-full flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Download className="w-6 h-6 text-gray-400" />
+            </div>
+            <p className="text-gray-500 text-sm">No wallet selected</p>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="h-full flex flex-col">
+        {/* Wallet Info */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 mb-4 border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium text-gray-900">{activeWallet.name}</div>
+              <div className="text-xs text-gray-500 capitalize">{activeWallet.network} Network</div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-medium text-gray-900">{activeWallet.balance.toFixed(6)} BTC</div>
+              <div className="text-xs text-gray-500">Current Balance</div>
+            </div>
+          </div>
+        </div>
+
+        {/* QR Code Area */}
+        <div className="flex-1 flex items-center justify-center mb-4">
+          <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-8 border border-gray-100 text-center max-w-sm w-full">
+            {/* QR Code Placeholder */}
+            <div className="w-48 h-48 bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl mx-auto mb-6 flex items-center justify-center border-2 border-dashed border-gray-200">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                  <div className="grid grid-cols-3 gap-1">
+                    {Array.from({length: 9}).map((_, i) => (
+                      <div key={i} className={`w-2 h-2 rounded-sm ${Math.random() > 0.5 ? 'bg-cyan-600' : 'bg-cyan-200'}`}></div>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500">QR Code</div>
+              </div>
+            </div>
+
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Receive Bitcoin</h3>
+            <p className="text-gray-500 text-sm mb-6">Share this address to receive payments</p>
+          </div>
+        </div>
+
+        {/* Address Section */}
+        <div className="space-y-3">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100">
+            <label className="text-sm font-medium text-gray-700 block mb-3">Your Bitcoin Address</label>
+            <div className="bg-gray-50 rounded-xl p-3 mb-3">
+              <div className="font-mono text-sm break-all text-gray-900">{activeWallet.address}</div>
+            </div>
+            
+            <button
+              onClick={copyAddress}
+              className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all"
+            >
+              {copied ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Check className="w-4 h-4" />
+                  <span>Copied!</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center gap-2">
+                  <Copy className="w-4 h-4" />
+                  <span>Copy Address</span>
+                </div>
+              )}
+            </button>
+          </div>
+
+          {/* Info Card */}
+          <div className="bg-cyan-50/80 backdrop-blur-sm rounded-2xl p-4 border border-cyan-100">
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 bg-cyan-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-cyan-600 text-xs font-bold">i</span>
+              </div>
+              <div className="space-y-1">
+                <div className="text-cyan-800 text-sm font-medium">Receiving Tips</div>
+                <div className="text-cyan-700 text-xs space-y-1">
+                  <div>• Only send {activeWallet.network} Bitcoin to this address</div>
+                  <div>• Transactions typically confirm in 10-60 minutes</div>
+                  <div>• This address is safe to share publicly</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  
+  function SettingsPage() { 
+    const [showAdvanced, setShowAdvanced] = useState(false)
+    const [showExportModal, setShowExportModal] = useState(false)
+    const [exportMnemonic, setExportMnemonic] = useState('')
+    const [exportedKey, setExportedKey] = useState('')
+    const [isExporting, setIsExporting] = useState(false)
+
+    const exportPrivateKey = async () => {
+      if (!activeWallet || !exportMnemonic.trim()) {
+        setExportedKey('')
+        return
+      }
+
+      setIsExporting(true)
+      try {
+        const { exportPrivateKey: exportKey } = await import('@/lib/bitcoin-wallet')
+        const result = await exportKey(
+          exportMnemonic,
+          activeWallet.derivationPath || "m/44'/0'/0'/0/0",
+          activeWallet.network || 'mainnet',
+          activeWallet.address
+        )
+        setExportedKey(result.privateKey)
+      } catch (error) {
+        setExportedKey('Error: ' + (error instanceof Error ? error.message : 'Export failed'))
+      } finally {
+        setIsExporting(false)
+      }
+    }
+
+    const clearWalletData = () => {
+      if (confirm('Clear all wallet data? Make sure you have your seed phrases backed up.')) {
+        setWallets([])
+        setSelectedWallet(null)
+        walletStorage.saveWallets([])
+      }
+    }
+
+    return (
+      <div className="h-full overflow-y-auto space-y-3">
+        {/* Display */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100">
+          <div className="p-4">
+            <h3 className="font-medium text-gray-900 mb-4">Display</h3>
+            
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-gray-700">Show Balance</div>
+                  <div className="text-xs text-gray-500">Hide amounts for privacy</div>
+                </div>
+                <button
+                  onClick={() => handleSettingToggle('showBalance', !settings.showBalance)}
+                  className={`w-12 h-6 rounded-full transition-all ${
+                    settings.showBalance ? 'bg-cyan-500' : 'bg-gray-200'
+                  }`}
+                  aria-label={`${settings.showBalance ? 'Hide' : 'Show'} balance amounts`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                    settings.showBalance ? 'translate-x-6' : 'translate-x-0.5'
+                  }`}></div>
+                </button>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-2">Currency</label>
+                <select
+                  value={settings.currency}
+                  onChange={(e) => handleSettingToggle('currency', e.target.value)}
+                  className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-white"
+                  aria-label="Select display currency"
+                  title="Choose your preferred display currency"
+                >
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                  <option value="BTC">BTC (₿)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Security */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100">
+          <div className="p-4">
+            <h3 className="font-medium text-gray-900 mb-4">Security</h3>
+            
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-gray-700">PIN Protection</div>
+                  <div className="text-xs text-gray-500">{settings.pinEnabled ? 'Enabled' : 'Tap to setup'}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!settings.pinEnabled) {
+                      navigateToPage('pin-setup')
+                    } else {
+                      handleSettingToggle('pinEnabled', false)
+                      handleSettingToggle('pinCode', '')
+                    }
+                  }}
+                  className={`w-12 h-6 rounded-full transition-all ${
+                    settings.pinEnabled ? 'bg-cyan-500' : 'bg-gray-200'
+                  }`}
+                  aria-label={`${settings.pinEnabled ? 'Disable' : 'Enable'} PIN protection`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                    settings.pinEnabled ? 'translate-x-6' : 'translate-x-0.5'
+                  }`}></div>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-gray-700">Notifications</div>
+                  <div className="text-xs text-gray-500">Transaction alerts</div>
+                </div>
+                <button
+                  onClick={() => handleSettingToggle('notifications', !settings.notifications)}
+                  className={`w-12 h-6 rounded-full transition-all ${
+                    settings.notifications ? 'bg-cyan-500' : 'bg-gray-200'
+                  }`}
+                  aria-label={`${settings.notifications ? 'Disable' : 'Enable'} notifications`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                    settings.notifications ? 'translate-x-6' : 'translate-x-0.5'
+                  }`}></div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Advanced */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100">
+          <div className="p-4">
+            <button
+              className="w-full flex items-center justify-between text-left"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+            >
+              <h3 className="font-medium text-gray-900">Advanced</h3>
+              <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${showAdvanced ? 'rotate-90' : ''}`} />
+            </button>
+            
+            {showAdvanced && (
+              <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">Network</label>
+                  <select
+                    value={settings.network}
+                    onChange={(e) => handleSettingToggle('network', e.target.value)}
+                    className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-white"
+                    aria-label="Select Bitcoin network"
+                    title="Choose default network for new wallets"
+                  >
+                    <option value="mainnet">Bitcoin Mainnet</option>
+                    <option value="testnet">Bitcoin Testnet</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  {activeWallet && (
+                    <button
+                      onClick={() => setShowExportModal(true)}
+                      className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl p-3 text-sm font-medium active:scale-95 transition-all text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Key className="w-4 h-4" />
+                        <span>Export Private Key</span>
+                      </div>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={clearWalletData}
+                    className="w-full bg-red-50 hover:bg-red-100 text-red-600 rounded-xl p-3 text-sm font-medium active:scale-95 transition-all text-left"
+                  >
+                    Clear All Wallet Data
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* About - Compact */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100">
+          <div className="p-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="text-sm font-medium text-gray-900">Rabbit Wallet</div>
+                <div className="text-xs text-gray-500">v1.0.0 • {wallets.length} wallets</div>
+              </div>
+              <div className="w-8 h-8 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-full flex items-center justify-center">
+                <div className="text-cyan-600 text-xs">🐰</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Export Modal */}
+        {showExportModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl max-w-sm w-full max-h-[80vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Export Key</h3>
+                  <button
+                    onClick={() => {
+                      setShowExportModal(false)
+                      setExportMnemonic('')
+                      setExportedKey('')
+                    }}
+                    className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                  >
+                    <span className="text-gray-600">✕</span>
+                  </button>
+                </div>
+
+                {!exportedKey ? (
+                  <div className="space-y-4">
+                    <textarea
+                      placeholder="Enter seed phrase..."
+                      value={exportMnemonic}
+                      onChange={(e) => setExportMnemonic(e.target.value)}
+                      className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 font-mono resize-none"
+                      rows={3}
+                    />
+                    <button
+                      className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium disabled:opacity-50 active:scale-95 transition-all"
+                      onClick={exportPrivateKey}
+                      disabled={isExporting || !exportMnemonic.trim()}
+                    >
+                      {isExporting ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Exporting...</span>
+                        </div>
+                      ) : (
+                        'Export'
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 font-mono text-xs break-all max-h-32 overflow-y-auto">
+                      {exportedKey}
+                    </div>
+                    <button
+                      className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all"
+                      onClick={() => {
+                        if (!exportedKey.startsWith('Error:')) {
+                          navigator.clipboard.writeText(exportedKey)
+                        }
+                      }}
+                      disabled={exportedKey.startsWith('Error:')}
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        <Copy className="w-4 h-4" />
+                        <span>Copy</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function PinSetupPage() {
+    const [step, setStep] = useState<'setup' | 'confirm'>('setup')
+    const [pin, setPin] = useState('')
+    const [confirmPin, setConfirmPin] = useState('')
+    const [error, setError] = useState('')
+
+    const handlePinInput = (digit: string) => {
+      if (step === 'setup' && pin.length < 4) {
+        setPin(pin + digit)
+      } else if (step === 'confirm' && confirmPin.length < 4) {
+        setConfirmPin(confirmPin + digit)
+      }
+    }
+
+    const handleBackspace = () => {
+      if (step === 'setup') {
+        setPin(pin.slice(0, -1))
+      } else {
+        setConfirmPin(confirmPin.slice(0, -1))
+      }
+      setError('')
+    }
+
+    const handleNext = () => {
+      if (step === 'setup' && pin.length === 4) {
+        setStep('confirm')
+        setError('')
+      } else if (step === 'confirm' && confirmPin.length === 4) {
+        if (pin === confirmPin) {
+          // Save PIN
+          handleSettingToggle('pinEnabled', true)
+          handleSettingToggle('pinCode', pin)
+          navigateToPage('settings')
+        } else {
+          setError('PINs do not match')
+          setConfirmPin('')
+        }
+      }
+    }
+
+    useEffect(() => {
+      if (step === 'setup' && pin.length === 4) {
+        setTimeout(() => handleNext(), 300)
+      } else if (step === 'confirm' && confirmPin.length === 4) {
+        setTimeout(() => handleNext(), 300)
+      }
+    }, [pin, confirmPin, step])
+
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-center px-6">
+        <div className="mb-8">
+          <div className="w-16 h-16 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-8 h-8 text-cyan-600" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            {step === 'setup' ? 'Create PIN' : 'Confirm PIN'}
+          </h2>
+          <p className="text-gray-500 text-sm">
+            {step === 'setup' 
+              ? 'Choose a 4-digit PIN to secure your wallet' 
+              : 'Enter your PIN again to confirm'
+            }
+          </p>
+        </div>
+
+        {/* PIN Display */}
+        <div className="flex gap-4 mb-8">
+          {[0, 1, 2, 3].map((index) => (
+            <div
+              key={index}
+              className={`w-4 h-4 rounded-full border-2 transition-all ${
+                (step === 'setup' ? pin.length > index : confirmPin.length > index)
+                  ? 'bg-cyan-500 border-cyan-500' 
+                  : 'border-gray-300'
+              }`}
+            />
+          ))}
+        </div>
+
+        {error && (
+          <div className="text-red-500 text-sm mb-4">{error}</div>
+        )}
+
+        {/* Number Pad */}
+        <div className="grid grid-cols-3 gap-4 max-w-xs">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
+            <button
+              key={digit}
+              onClick={() => handlePinInput(digit.toString())}
+              className="w-16 h-16 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-200 text-lg font-medium text-gray-900 active:scale-95 transition-all shadow-sm"
+            >
+              {digit}
+            </button>
+          ))}
+          <button
+            onClick={() => handlePinInput('0')}
+            className="w-16 h-16 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-200 text-lg font-medium text-gray-900 active:scale-95 transition-all shadow-sm col-start-2"
+          >
+            0
+          </button>
+          <button
+            onClick={handleBackspace}
+            className="w-16 h-16 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-200 text-lg font-medium text-gray-900 active:scale-95 transition-all shadow-sm flex items-center justify-center"
+            aria-label="Delete last digit"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Show loading state during initialization
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="w-[375px] h-[812px] bg-white rounded-[2.5rem] shadow-2xl border border-gray-200">
+          <div className="w-full h-full rounded-[2.5rem] overflow-hidden relative flex flex-col">
+            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-6 bg-black rounded-b-2xl z-10"></div>
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <RefreshCw className="w-6 h-6 animate-spin text-cyan-600" />
+                </div>
+                <p className="text-gray-600 text-sm">Initializing wallet...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Handle case where no wallets exist
+  if (wallets.length === 0) {
+    // If user is trying to add a wallet, show the add wallet page even with no existing wallets
+    if (currentPage === 'add-wallet') {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="w-[375px] h-[812px] bg-white rounded-[2.5rem] shadow-2xl border border-gray-200">
+            <div className="w-full h-full rounded-[2.5rem] overflow-hidden relative flex flex-col">
+              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-6 bg-black rounded-b-2xl z-10"></div>
+              
+              <header className="flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-sm border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <button
+                    className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center"
+                    onClick={() => {
+                      console.log('🔙 Back button clicked - returning to home')
+                      navigateToPage('home')
+                    }}
+                    aria-label="Go back to home"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-gray-600" />
+                  </button>
+                  <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-2xl flex items-center justify-center">
+                    <Image 
+                      src="/images/rabbit-logo.svg" 
+                      alt="Rabbit" 
+                      width={16} 
+                      height={16} 
+                      className="text-white"
+                    />
+                  </div>
+                  <div>
+                    <h1 className="text-lg font-medium text-gray-900">Add Wallet</h1>
+                  </div>
+                </div>
+              </header>
+
+              <main className="flex-1 overflow-y-auto px-6 pb-20">
+                <AddWalletPage />
+              </main>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // Default welcome screen
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="w-[375px] h-[812px] bg-white rounded-[2.5rem] shadow-2xl border border-gray-200">
+          <div className="w-full h-full rounded-[2.5rem] overflow-hidden relative flex flex-col">
+            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-6 bg-black rounded-b-2xl z-10"></div>
+            
+            <header className="flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-sm border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-2xl flex items-center justify-center">
+                  <Image 
+                    src="/images/rabbit-logo.svg" 
+                    alt="Rabbit" 
+                    width={16} 
+                    height={16} 
+                    className="text-white"
+                  />
+                </div>
+                <div>
+                  <h1 className="text-lg font-medium text-gray-900">Rabbit</h1>
+                </div>
+              </div>
+            </header>
+
+            <div className="flex-1 flex items-center justify-center px-6">
+              <div className="text-center max-w-xs">
+                <div className="w-20 h-20 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                  <Image 
+                    src="/images/rabbit-logo.svg" 
+                    alt="Rabbit" 
+                    width={32} 
+                    height={32} 
+                    className="text-cyan-600"
+                  />
+                </div>
+                <h2 className="text-xl font-semibold text-gray-900 mb-3">Welcome to Rabbit</h2>
+                <p className="text-gray-500 mb-8 text-sm leading-relaxed">Get started by creating your first Bitcoin wallet. Your keys, your Bitcoin.</p>
+                
+                <button
+                  onClick={() => {
+                    console.log('🚀 Wallet creation button clicked!')
+                    try {
+                      navigateToPage('add-wallet')
+                      console.log('🚀 navigateToPage call completed')
+                    } catch (error) {
+                      console.error('🚀 Error in navigateToPage:', error)
+                    }
+                  }}
+                  className="w-full bg-gradient-to-r from-cyan-50 to-cyan-100 border border-cyan-200 rounded-2xl p-4 hover:from-cyan-100 hover:to-cyan-200 transition-all active:scale-95"
+                >
+                  <p className="text-cyan-800 text-sm font-medium">
+                    🐰 <strong>Tap to create or import a wallet</strong>
+                  </p>
+                </button>
+                
+                <div className="mt-8 space-y-2">
+                  <div className="flex items-center text-xs text-gray-400">
+                    <div className="w-1 h-1 bg-gray-400 rounded-full mr-2"></div>
+                    <span>Create a new wallet with secure seed phrase</span>
+                  </div>
+                  <div className="flex items-center text-xs text-gray-400">
+                    <div className="w-1 h-1 bg-gray-400 rounded-full mr-2"></div>
+                    <span>Import existing wallet with seed phrase</span>
+                  </div>
+                  <div className="flex items-center text-xs text-gray-400">
+                    <div className="w-1 h-1 bg-gray-400 rounded-full mr-2"></div>
+                    <span>Real Bitcoin transactions on mainnet</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Main wallet interface
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="w-[375px] h-[812px] bg-white rounded-[2.5rem] shadow-2xl border border-gray-200 relative overflow-hidden">
+        <div className="w-full h-full rounded-[2.5rem] overflow-hidden relative flex flex-col">
+          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-6 bg-black rounded-b-2xl z-10"></div>
+
+          {/* Page Content with Blur Transition */}
+          <div className={`flex-1 flex flex-col transition-all duration-300 ease-in-out ${
+            isTransitioning ? 'blur-sm opacity-50 scale-95' : 'blur-0 opacity-100 scale-100'
+          }`}>
+            {/* Header */}
+            <header className="flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-sm border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                {currentPage !== 'home' && (
+                  <button
+                    className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center"
+                    onClick={() => navigateToPage('home')}
+                    aria-label="Go back to home"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-gray-600" />
+                  </button>
+                )}
+                <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-2xl flex items-center justify-center">
+                  <Image 
+                    src="/images/rabbit-logo.svg" 
+                    alt="Rabbit" 
+                    width={16} 
+                    height={16} 
+                    className="text-white"
+                  />
+                </div>
+                <div>
+                  <h1 className="text-lg font-medium text-gray-900">
+                    {currentPage === 'home' ? 'Rabbit' : 
+                     currentPage === 'wallet' ? 'Wallets' :
+                     currentPage === 'send' ? 'Send Bitcoin' :
+                     currentPage === 'receive' ? 'Receive Bitcoin' :
+                     currentPage === 'settings' ? 'Settings' : 
+                     currentPage === 'add-wallet' ? 'Add Wallet' :
+                     currentPage === 'pin-setup' ? 'PIN Setup' : 'Rabbit'}
+                  </h1>
+                </div>
+              </div>
+            </header>
+
+            {/* Page Content */}
+            <main className="flex-1 overflow-y-auto px-6 pb-20">
+              {(() => {
+                console.log('🔍 Rendering page content, currentPage:', currentPage)
+                
+                if (currentPage === 'home') {
+                  console.log('🔍 Rendering HomePage')
+                  return <HomePage />
+                }
+                if (currentPage === 'wallet') {
+                  console.log('🔍 Rendering WalletPage')
+                  return <WalletPage />
+                }
+                if (currentPage === 'send') {
+                  console.log('🔍 Rendering SendPage')
+                  return <SendPage />
+                }
+                if (currentPage === 'receive') {
+                  console.log('🔍 Rendering ReceivePage')
+                  return <ReceivePage />
+                }
+                if (currentPage === 'settings') {
+                  console.log('🔍 Rendering SettingsPage')
+                  return <SettingsPage />
+                }
+                if (currentPage === 'add-wallet') {
+                  console.log('🔍 Rendering AddWalletPage')
+                  return <AddWalletPage />
+                }
+                if (currentPage === 'pin-setup') {
+                  console.log('🔍 Rendering PinSetupPage')
+                  return <PinSetupPage />
+                }
+                console.log('🔍 No matching page found for:', currentPage, '- showing fallback')
+                return <div>Unknown page: {currentPage}</div>
+              })()}
+            </main>
+          </div>
+
+          {/* Bottom Navigation - Fixed Overlay */}
+          <div className="absolute bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-100 px-6 py-3 z-20">
+            <div className="flex justify-around items-center">
+              {[
+                { icon: Home, label: "Home", page: 'home' as PageType },
+                { icon: Wallet, label: "Wallet", page: 'wallet' as PageType },
+                { icon: Send, label: "Send", page: 'send' as PageType },
+                { icon: Download, label: "Receive", page: 'receive' as PageType },
+                { icon: Settings, label: "Settings", page: 'settings' as PageType },
+              ].map(({ icon: Icon, label, page }) => (
+                <button
+                  key={label}
+                  className={`flex flex-col items-center gap-1 p-2 min-h-[52px] transition-all active:scale-95 ${
+                    currentPage === page ? "text-cyan-600" : "text-gray-400 hover:text-gray-600"
+                  }`}
+                  onClick={() => navigateToPage(page)}
+                >
+                  <Icon className="w-5 h-5" />
+                  <span className="text-xs font-medium">{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+} 

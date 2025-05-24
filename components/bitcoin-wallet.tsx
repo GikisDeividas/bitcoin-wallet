@@ -486,12 +486,12 @@ export default function BitcoinWallet() {
             onClick={() => handleMethodSelect('generate')}
           >
             <div className="flex items-center">
-              <div className="w-10 h-10 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-xl flex items-center justify-center mr-3">
-                <Plus className="w-5 h-5 text-cyan-600" />
+              <div className="w-8 h-8 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-xl flex items-center justify-center mr-3">
+                <Plus className="w-4 h-4 text-cyan-600" />
               </div>
               <div className="text-left">
                 <div className="font-medium text-gray-900 text-sm">Create New Wallet</div>
-                <div className="text-xs text-gray-500">Generate a new wallet with secure seed phrase</div>
+                <div className="text-xs text-gray-500 leading-tight">Generate a new wallet with<br />secure seed phrase</div>
               </div>
             </div>
           </Button>
@@ -502,8 +502,8 @@ export default function BitcoinWallet() {
             onClick={() => handleMethodSelect('import')}
           >
             <div className="flex items-center">
-              <div className="w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center mr-3">
-                <Download className="w-5 h-5 text-gray-600" />
+              <div className="w-8 h-8 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center mr-3">
+                <Download className="w-4 h-4 text-gray-600" />
               </div>
               <div className="text-left">
                 <div className="font-medium text-gray-900 text-sm">Import Existing Wallet</div>

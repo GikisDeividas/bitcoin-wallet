@@ -5,12 +5,6 @@ import { getBlockchainService, UTXOInfo } from './blockchain-service'
 import { sha256 } from '@noble/hashes/sha256'
 import * as secp256k1 from '@noble/secp256k1'
 import { hmac } from '@noble/hashes/hmac'
-import * as bitcoin from 'bitcoinjs-lib'
-import { ECPairFactory } from 'ecpair'
-import * as ecc from 'tiny-secp256k1'
-
-// Initialize ECPair with secp256k1 implementation
-const ECPair = ECPairFactory(ecc)
 
 // Configure secp256k1 for browser environment
 if (typeof window !== 'undefined') {
@@ -47,13 +41,7 @@ export interface SignedTransaction {
   fee: number
 }
 
-// Bitcoin Script opcodes
-const OP_DUP = 0x76
-const OP_HASH160 = 0xa9
-const OP_EQUALVERIFY = 0x88
-const OP_CHECKSIG = 0xac
-
-// Serialize integer as little-endian
+// Helper functions for Bitcoin transaction creation
 function serializeUint32LE(value: number): Uint8Array {
   const buffer = new Uint8Array(4)
   buffer[0] = value & 0xff
@@ -63,7 +51,6 @@ function serializeUint32LE(value: number): Uint8Array {
   return buffer
 }
 
-// Serialize integer as big-endian
 function serializeUint64LE(value: number): Uint8Array {
   const buffer = new Uint8Array(8)
   const low = value >>> 0
@@ -81,7 +68,6 @@ function serializeUint64LE(value: number): Uint8Array {
   return buffer
 }
 
-// Serialize variable length integer
 function serializeVarInt(value: number): Uint8Array {
   if (value < 0xfd) {
     return new Uint8Array([value])
@@ -91,7 +77,7 @@ function serializeVarInt(value: number): Uint8Array {
     buffer[1] = value & 0xff
     buffer[2] = (value >> 8) & 0xff
     return buffer
-  } else if (value <= 0xffffffff) {
+  } else {
     const buffer = new Uint8Array(5)
     buffer[0] = 0xfe
     buffer[1] = value & 0xff
@@ -99,44 +85,64 @@ function serializeVarInt(value: number): Uint8Array {
     buffer[3] = (value >> 16) & 0xff
     buffer[4] = (value >> 24) & 0xff
     return buffer
-  } else {
-    const buffer = new Uint8Array(9)
-    buffer[0] = 0xff
-    const low = value >>> 0
-    const high = Math.floor(value / 0x100000000)
-    buffer[1] = low & 0xff
-    buffer[2] = (low >> 8) & 0xff
-    buffer[3] = (low >> 16) & 0xff
-    buffer[4] = (low >> 24) & 0xff
-    buffer[5] = high & 0xff
-    buffer[6] = (high >> 8) & 0xff
-    buffer[7] = (high >> 16) & 0xff
-    buffer[8] = (high >> 24) & 0xff
-    return buffer
   }
 }
 
-// Convert hex string to Uint8Array
 function hexToBytes(hex: string): Uint8Array {
   return new Uint8Array(hex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)))
 }
 
-// Convert Uint8Array to hex string
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-// Reverse byte order for Bitcoin's little-endian format
 function reverseBytes(bytes: Uint8Array): Uint8Array {
   return new Uint8Array(bytes.reverse())
 }
 
-export class TransactionSigner {
-  private bitcoinNetwork: bitcoin.Network
+// Base58 decoding for address parsing
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
-  constructor(private network: 'testnet' | 'mainnet') {
-    this.bitcoinNetwork = network === 'testnet' ? bitcoin.networks.testnet : bitcoin.networks.bitcoin
+function base58Decode(s: string): Uint8Array {
+  let num = BigInt(0)
+  const base = BigInt(58)
+  
+  for (let i = 0; i < s.length; i++) {
+    const char = s[i]
+    const charIndex = BASE58_ALPHABET.indexOf(char)
+    if (charIndex === -1) throw new Error('Invalid base58 character')
+    num = num * base + BigInt(charIndex)
   }
+  
+  // Convert to bytes
+  const bytes: number[] = []
+  while (num > 0) {
+    bytes.unshift(Number(num % BigInt(256)))
+    num = num / BigInt(256)
+  }
+  
+  // Add leading zeros
+  for (let i = 0; i < s.length && s[i] === '1'; i++) {
+    bytes.unshift(0)
+  }
+  
+  return new Uint8Array(bytes)
+}
+
+function decodeAddress(address: string, network: 'testnet' | 'mainnet'): Uint8Array {
+  try {
+    const decoded = base58Decode(address)
+    if (decoded.length !== 25) throw new Error('Invalid address length')
+    
+    // Remove version byte and checksum to get the hash160
+    return decoded.slice(1, 21)
+  } catch (error) {
+    throw new Error('Invalid Bitcoin address format')
+  }
+}
+
+export class TransactionSigner {
+  constructor(private network: 'testnet' | 'mainnet') {}
 
   // 🔑 SECURE: Create and sign transaction with temporary key derivation
   async createAndSignTransaction(
@@ -176,49 +182,37 @@ export class TransactionSigner {
         throw new Error('Insufficient funds for transaction')
       }
 
-      // Create transaction using bitcoinjs-lib
-      const tx = new bitcoin.Transaction()
-      tx.version = 2
-      
-      // Add inputs
-      for (const utxo of selectedUtxos) {
-        tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout)
+      // Create transaction using pure noble implementation
+      const unsignedTx: UnsignedTransaction = {
+        inputs: selectedUtxos.map(utxo => ({
+          txid: utxo.txid,
+          vout: utxo.vout,
+          value: utxo.value,
+          scriptPubKey: this.createP2PKHScript(walletAddress)
+        })),
+        outputs: [
+          {
+            address: recipientAddress,
+            value: amountSatoshis
+          }
+        ],
+        fee,
+        network: this.network
       }
-
-      // Add recipient output
-      tx.addOutput(bitcoin.address.toOutputScript(recipientAddress, this.bitcoinNetwork), amountSatoshis)
 
       // Add change output if needed
       const change = totalInput - amountSatoshis - fee
       if (change > 546) { // Dust threshold
-        tx.addOutput(bitcoin.address.toOutputScript(walletAddress, this.bitcoinNetwork), change)
+        unsignedTx.outputs.push({
+          address: walletAddress,
+          value: change
+        })
       }
 
-      // Sign inputs
-      const keyPair = ECPair.fromPrivateKey(Buffer.from(keys.privateKey, 'hex'))
-      const hashType = bitcoin.Transaction.SIGHASH_ALL
+      // Sign the transaction
+      const signedTx = await this.signTransaction(unsignedTx, keys.privateKey)
       
-      for (let i = 0; i < selectedUtxos.length; i++) {
-        const utxo = selectedUtxos[i]
-        const scriptPubKey = bitcoin.address.toOutputScript(walletAddress, this.bitcoinNetwork)
-        const signatureHash = tx.hashForSignature(i, scriptPubKey, hashType)
-        const signature = keyPair.sign(signatureHash)
-        const scriptSig = bitcoin.script.compile([
-          Buffer.concat([signature, Buffer.from([hashType])]),
-          Buffer.from(keyPair.publicKey)
-        ])
-        tx.setInputScript(i, scriptSig)
-      }
-      
-      const txHex = tx.toHex()
-      
-      return {
-        txHex,
-        txid: tx.getId(),
-        size: tx.byteLength(),
-        virtualSize: tx.virtualSize(),
-        fee
-      }
+      return signedTx
 
     } catch (error) {
       console.error('Transaction creation failed:', error)
@@ -234,35 +228,6 @@ export class TransactionSigner {
       if (global.gc) {
         global.gc()
       }
-    }
-  }
-
-  private async getRawTransaction(txid: string): Promise<string> {
-    try {
-      // For now, create a simple mock raw transaction since we're using PSBT
-      // This is a temporary workaround - real implementation would fetch from blockchain
-      console.warn(`Warning: Using mock raw transaction for ${txid}`)
-      
-      // Create a minimal valid raw transaction structure
-      // In a real implementation, this would fetch the actual transaction from the blockchain
-      const mockRawTx = '0200000001' + // version
-                       txid.match(/.{2}/g)?.reverse().join('') + // reversed txid  
-                       '00000000' + // vout (placeholder)
-                       '1976a914' + // scriptSig start (P2PKH)
-                       '0'.repeat(40) + // placeholder pubkey hash
-                       '88ac' + // scriptSig end
-                       'ffffffff' + // sequence
-                       '01' + // output count
-                       '0000000000000000' + // value (placeholder)
-                       '1976a914' + // scriptPubKey start
-                       '0'.repeat(40) + // placeholder address hash
-                       '88ac' + // scriptPubKey end
-                       '00000000' // locktime
-      
-      return mockRawTx
-    } catch (error) {
-      console.error('Failed to get raw transaction:', error)
-      throw new Error('Failed to fetch transaction data for UTXO')
     }
   }
 
@@ -296,6 +261,264 @@ export class TransactionSigner {
     const fee = Math.ceil(estimatedSize * feeRate)
     
     return { selectedUtxos, totalInput, fee }
+  }
+
+  private createP2PKHScript(address: string): string {
+    try {
+      const hash160 = decodeAddress(address, this.network)
+      return '76a914' + bytesToHex(hash160) + '88ac' // OP_DUP OP_HASH160 <hash> OP_EQUALVERIFY OP_CHECKSIG
+    } catch (error) {
+      throw new Error('Failed to create script for address: ' + address)
+    }
+  }
+
+  private createOutputScript(address: string): Uint8Array {
+    try {
+      const hash160 = decodeAddress(address, this.network)
+      const script = new Uint8Array(25)
+      script[0] = 0x76 // OP_DUP
+      script[1] = 0xa9 // OP_HASH160
+      script[2] = 20   // hash160 length
+      script.set(hash160, 3)
+      script[23] = 0x88 // OP_EQUALVERIFY
+      script[24] = 0xac // OP_CHECKSIG
+      return script
+    } catch (error) {
+      throw new Error('Failed to create output script for address: ' + address)
+    }
+  }
+
+  private async signTransaction(unsignedTx: UnsignedTransaction, privateKey: string): Promise<SignedTransaction> {
+    // Create the raw transaction
+    const rawTx = this.createRawTransaction(unsignedTx)
+    
+    // Sign each input
+    const signedInputs: { signature: Uint8Array; publicKey: Uint8Array }[] = []
+    const privateKeyBytes = hexToBytes(privateKey)
+    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true) // compressed
+    
+    for (let i = 0; i < unsignedTx.inputs.length; i++) {
+      const input = unsignedTx.inputs[i]
+      
+      // Create signature hash for this input
+      const txForSigning = this.createTxForSigning(unsignedTx, i, input.scriptPubKey)
+      const hash = sha256(sha256(txForSigning))
+      
+      // Sign with private key using noble
+      const signature = await secp256k1.sign(hash, privateKeyBytes)
+      
+      signedInputs.push({
+        signature: signature.toCompactRawBytes(),
+        publicKey: publicKeyBytes
+      })
+    }
+
+    // Assemble final transaction
+    const signedTxHex = this.assembleFinalTransaction(unsignedTx, signedInputs)
+    
+    // Calculate transaction hash
+    const txBytes = hexToBytes(signedTxHex)
+    const hash1 = sha256(txBytes)
+    const hash2 = sha256(hash1)
+    const txid = bytesToHex(reverseBytes(hash2))
+
+    return {
+      txHex: signedTxHex,
+      txid,
+      size: txBytes.length,
+      virtualSize: Math.ceil(txBytes.length), // Simplified calculation
+      fee: unsignedTx.fee
+    }
+  }
+
+  private createRawTransaction(unsignedTx: UnsignedTransaction): Uint8Array {
+    const parts: Uint8Array[] = []
+    
+    // Version (4 bytes, little-endian)
+    parts.push(serializeUint32LE(2))
+    
+    // Input count
+    parts.push(serializeVarInt(unsignedTx.inputs.length))
+    
+    // Inputs
+    for (const input of unsignedTx.inputs) {
+      // Previous transaction hash (32 bytes, reversed)
+      parts.push(reverseBytes(hexToBytes(input.txid)))
+      
+      // Previous output index (4 bytes, little-endian)
+      parts.push(serializeUint32LE(input.vout))
+      
+      // Script length (empty for unsigned)
+      parts.push(new Uint8Array([0]))
+      
+      // Sequence (4 bytes, little-endian)
+      parts.push(serializeUint32LE(0xffffffff))
+    }
+    
+    // Output count
+    parts.push(serializeVarInt(unsignedTx.outputs.length))
+    
+    // Outputs
+    for (const output of unsignedTx.outputs) {
+      // Value (8 bytes, little-endian)
+      parts.push(serializeUint64LE(output.value))
+      
+      // Script
+      const script = this.createOutputScript(output.address)
+      parts.push(serializeVarInt(script.length))
+      parts.push(script)
+    }
+    
+    // Locktime (4 bytes, little-endian)
+    parts.push(serializeUint32LE(0))
+    
+    // Concatenate all parts
+    const totalLength = parts.reduce((sum, part) => sum + part.length, 0)
+    const result = new Uint8Array(totalLength)
+    let offset = 0
+    
+    for (const part of parts) {
+      result.set(part, offset)
+      offset += part.length
+    }
+    
+    return result
+  }
+
+  private createTxForSigning(unsignedTx: UnsignedTransaction, inputIndex: number, scriptPubKey: string): Uint8Array {
+    const parts: Uint8Array[] = []
+    
+    // Version
+    parts.push(serializeUint32LE(2))
+    
+    // Input count
+    parts.push(serializeVarInt(unsignedTx.inputs.length))
+    
+    // Inputs
+    for (let i = 0; i < unsignedTx.inputs.length; i++) {
+      const input = unsignedTx.inputs[i]
+      
+      // Previous transaction hash (reversed)
+      parts.push(reverseBytes(hexToBytes(input.txid)))
+      
+      // Previous output index
+      parts.push(serializeUint32LE(input.vout))
+      
+      // Script (only for the input being signed)
+      if (i === inputIndex) {
+        const script = hexToBytes(scriptPubKey)
+        parts.push(serializeVarInt(script.length))
+        parts.push(script)
+      } else {
+        parts.push(new Uint8Array([0])) // Empty script for other inputs
+      }
+      
+      // Sequence
+      parts.push(serializeUint32LE(0xffffffff))
+    }
+    
+    // Outputs
+    parts.push(serializeVarInt(unsignedTx.outputs.length))
+    
+    for (const output of unsignedTx.outputs) {
+      parts.push(serializeUint64LE(output.value))
+      const script = this.createOutputScript(output.address)
+      parts.push(serializeVarInt(script.length))
+      parts.push(script)
+    }
+    
+    // Locktime
+    parts.push(serializeUint32LE(0))
+    
+    // SIGHASH_ALL
+    parts.push(serializeUint32LE(0x01))
+    
+    // Concatenate
+    const totalLength = parts.reduce((sum, part) => sum + part.length, 0)
+    const result = new Uint8Array(totalLength)
+    let offset = 0
+    
+    for (const part of parts) {
+      result.set(part, offset)
+      offset += part.length
+    }
+    
+    return result
+  }
+
+  private assembleFinalTransaction(
+    unsignedTx: UnsignedTransaction, 
+    signedInputs: { signature: Uint8Array; publicKey: Uint8Array }[]
+  ): string {
+    const parts: Uint8Array[] = []
+    
+    // Version
+    parts.push(serializeUint32LE(2))
+    
+    // Input count
+    parts.push(serializeVarInt(unsignedTx.inputs.length))
+    
+    // Inputs with signatures
+    for (let i = 0; i < unsignedTx.inputs.length; i++) {
+      const input = unsignedTx.inputs[i]
+      const signedInput = signedInputs[i]
+      
+      // Previous transaction hash (reversed)
+      parts.push(reverseBytes(hexToBytes(input.txid)))
+      
+      // Previous output index
+      parts.push(serializeUint32LE(input.vout))
+      
+      // Script sig (signature + public key)
+      const sigWithHashType = new Uint8Array(signedInput.signature.length + 1)
+      sigWithHashType.set(signedInput.signature)
+      sigWithHashType[signedInput.signature.length] = 0x01 // SIGHASH_ALL
+      
+      const scriptSig = new Uint8Array(
+        1 + sigWithHashType.length + 1 + signedInput.publicKey.length
+      )
+      let offset = 0
+      
+      // Signature length + signature
+      scriptSig[offset++] = sigWithHashType.length
+      scriptSig.set(sigWithHashType, offset)
+      offset += sigWithHashType.length
+      
+      // Public key length + public key
+      scriptSig[offset++] = signedInput.publicKey.length
+      scriptSig.set(signedInput.publicKey, offset)
+      
+      parts.push(serializeVarInt(scriptSig.length))
+      parts.push(scriptSig)
+      
+      // Sequence
+      parts.push(serializeUint32LE(0xffffffff))
+    }
+    
+    // Outputs
+    parts.push(serializeVarInt(unsignedTx.outputs.length))
+    
+    for (const output of unsignedTx.outputs) {
+      parts.push(serializeUint64LE(output.value))
+      const script = this.createOutputScript(output.address)
+      parts.push(serializeVarInt(script.length))
+      parts.push(script)
+    }
+    
+    // Locktime
+    parts.push(serializeUint32LE(0))
+    
+    // Concatenate all parts
+    const totalLength = parts.reduce((sum, part) => sum + part.length, 0)
+    const result = new Uint8Array(totalLength)
+    let offset = 0
+    
+    for (const part of parts) {
+      result.set(part, offset)
+      offset += part.length
+    }
+    
+    return bytesToHex(result)
   }
 }
 

@@ -1,0 +1,261 @@
+/* Add Wallet Page Styles */
+
+/* Common Layout */
+.wallet-creation-container {
+  @apply space-y-3 pb-2;
+}
+
+.wallet-creation-header {
+  @apply text-center mb-4;
+}
+
+.wallet-creation-icon {
+  @apply w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3;
+}
+
+.wallet-creation-title {
+  @apply text-base font-semibold text-gray-900 mb-1;
+}
+
+.wallet-creation-subtitle {
+  @apply text-gray-600 text-xs;
+}
+
+/* Method Selection */
+.method-icon-create {
+  @apply w-12 h-12 bg-gradient-to-br from-cyan-100 to-cyan-200;
+}
+
+.method-icon-import {
+  @apply w-12 h-12 bg-gradient-to-br from-gray-100 to-gray-200;
+}
+
+.method-button {
+  @apply w-full p-3 h-auto rounded-2xl border border-gray-200 hover:border-cyan-300 hover:bg-cyan-50/50 active:scale-95 transition-all;
+}
+
+.method-button-content {
+  @apply flex items-center;
+}
+
+.method-button-icon {
+  @apply w-8 h-8 rounded-xl flex items-center justify-center mr-3;
+}
+
+.method-button-icon-create {
+  @apply bg-gradient-to-br from-cyan-100 to-cyan-200;
+}
+
+.method-button-icon-import {
+  @apply bg-gradient-to-br from-gray-100 to-gray-200;
+}
+
+.method-button-text {
+  @apply text-left;
+}
+
+.method-button-title {
+  @apply font-medium text-gray-900 text-sm;
+}
+
+.method-button-description {
+  @apply text-xs text-gray-500 leading-tight;
+}
+
+/* Name Input */
+.name-icon {
+  @apply w-12 h-12 bg-gradient-to-br from-cyan-100 to-cyan-200;
+}
+
+.name-input-container {
+  @apply space-y-3;
+}
+
+.name-input-label {
+  @apply text-xs font-medium text-gray-700 block mb-2;
+}
+
+.name-input-field {
+  @apply w-full p-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-white;
+}
+
+.name-submit-button {
+  @apply w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white rounded-2xl h-11 text-sm font-medium active:scale-95 transition-all;
+}
+
+.name-submit-loading {
+  @apply flex items-center gap-2;
+}
+
+/* Seed Display */
+.seed-icon {
+  @apply w-12 h-12 bg-red-100;
+}
+
+.security-warning {
+  @apply bg-red-50 border border-red-200 rounded-2xl p-3 mb-3;
+}
+
+.security-warning-header {
+  @apply flex items-center gap-2 mb-2;
+}
+
+.security-warning-icon {
+  @apply w-4 h-4 bg-red-500 rounded-full flex items-center justify-center;
+}
+
+.security-warning-title {
+  @apply text-red-800 text-xs font-medium;
+}
+
+.security-warning-list {
+  @apply text-red-700 text-xs space-y-0.5;
+}
+
+.seed-container {
+  @apply bg-gray-50 rounded-2xl p-3 mb-3;
+}
+
+.seed-header {
+  @apply mb-3;
+}
+
+.seed-label {
+  @apply text-xs font-medium text-gray-700;
+}
+
+.seed-grid {
+  @apply grid grid-cols-3 gap-2 mb-3;
+}
+
+.seed-word-card {
+  @apply bg-white rounded-xl p-2 text-center border border-gray-200;
+}
+
+.seed-word-number {
+  @apply text-xs text-gray-500;
+}
+
+.seed-word-text {
+  @apply font-mono text-xs font-medium;
+}
+
+.seed-buttons {
+  @apply flex gap-2;
+}
+
+.seed-button {
+  @apply flex-1 text-xs h-9 rounded-xl border-gray-200 hover:bg-gray-100;
+}
+
+.seed-reveal-area {
+  @apply text-center py-8 text-gray-500 cursor-pointer hover:bg-gray-100 rounded-xl transition-colors border-2 border-dashed border-gray-300;
+}
+
+.seed-reveal-text {
+  @apply text-sm font-medium;
+}
+
+.seed-reveal-subtext {
+  @apply text-xs mt-1;
+}
+
+.seed-continue-button {
+  @apply w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white rounded-2xl h-11 text-sm font-medium active:scale-95 transition-all;
+}
+
+/* Seed Confirmation */
+.confirm-icon {
+  @apply w-12 h-12 bg-cyan-100;
+}
+
+.confirm-inputs {
+  @apply space-y-3 mb-4;
+}
+
+.confirm-input-label {
+  @apply text-xs font-medium text-gray-700 block mb-1;
+}
+
+.confirm-input-field {
+  @apply w-full p-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-white;
+}
+
+.confirm-checkboxes {
+  @apply space-y-2 mb-4;
+}
+
+.confirm-checkbox-label {
+  @apply flex items-start gap-2 cursor-pointer;
+}
+
+.confirm-checkbox-input {
+  @apply mt-0.5 w-4 h-4 text-cyan-600 rounded focus:ring-cyan-400;
+}
+
+.confirm-checkbox-text {
+  @apply text-xs text-gray-700;
+}
+
+.confirm-submit-button {
+  @apply w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white rounded-2xl h-11 text-sm font-medium active:scale-95 transition-all;
+}
+
+/* Import Seed */
+.import-icon {
+  @apply w-12 h-12 bg-blue-100;
+}
+
+.import-instructions {
+  @apply bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-3;
+}
+
+.import-instructions-header {
+  @apply flex items-center gap-2 mb-2;
+}
+
+.import-instructions-icon {
+  @apply w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center;
+}
+
+.import-instructions-title {
+  @apply text-blue-800 text-xs font-medium;
+}
+
+.import-instructions-list {
+  @apply text-blue-700 text-xs space-y-0.5;
+}
+
+.import-input-container {
+  @apply space-y-4;
+}
+
+.import-input-label {
+  @apply text-xs font-medium text-gray-700 block mb-2;
+}
+
+.import-textarea {
+  @apply w-full p-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent font-mono resize-none bg-white;
+}
+
+.import-submit-button {
+  @apply w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white rounded-2xl h-11 text-sm font-medium active:scale-95 transition-all;
+}
+
+.import-submit-loading {
+  @apply flex items-center gap-2;
+}
+
+/* Loading States */
+.loading-spinner {
+  @apply w-4 h-4 animate-spin;
+}
+
+/* Button States */
+.button-disabled {
+  @apply opacity-50 cursor-not-allowed;
+}
+
+.button-icon {
+  @apply w-3 h-3 mr-2;
+} 

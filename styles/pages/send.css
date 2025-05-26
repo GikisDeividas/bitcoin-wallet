@@ -1,0 +1,216 @@
+/* Send Page Styles */
+
+/* Wallet Info Card */
+.send-wallet-info {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 mb-4 border border-gray-100;
+}
+
+.send-wallet-content {
+  @apply flex items-center justify-between;
+}
+
+.send-wallet-name {
+  @apply text-sm font-medium text-gray-900;
+}
+
+.send-wallet-balance {
+  @apply text-xs text-gray-500;
+}
+
+.send-wallet-fiat {
+  @apply text-sm font-medium text-gray-900;
+}
+
+.send-wallet-label {
+  @apply text-xs text-gray-500;
+}
+
+/* Form Container */
+.send-form {
+  @apply flex-1 space-y-4;
+}
+
+/* Input Cards */
+.send-input-card {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100;
+}
+
+.send-input-label {
+  @apply text-sm font-medium text-gray-700 block mb-2;
+}
+
+.send-input-field {
+  @apply w-full text-sm bg-transparent border-0 outline-0 font-mono placeholder-gray-400;
+}
+
+.send-input-field-error {
+  @apply text-red-600;
+}
+
+.send-input-error {
+  @apply text-red-500 text-xs mt-1;
+}
+
+/* Amount Input */
+.send-amount-header {
+  @apply flex items-center justify-between mb-2;
+}
+
+.send-currency-toggle {
+  @apply flex bg-gray-100 rounded-lg p-1;
+}
+
+.send-currency-button {
+  @apply px-3 py-1 text-xs font-medium rounded;
+}
+
+.send-currency-button-active {
+  @apply bg-white text-gray-900 shadow-sm;
+}
+
+.send-currency-button-inactive {
+  @apply text-gray-500;
+}
+
+.send-amount-input {
+  @apply w-full text-lg font-medium bg-transparent border-0 outline-0 placeholder-gray-400;
+}
+
+.send-amount-conversion {
+  @apply text-xs text-gray-500 mt-1;
+}
+
+.send-fee-info {
+  @apply ml-2 text-cyan-600;
+}
+
+/* Network Fee Card */
+.send-fee-card {
+  @apply bg-cyan-50/80 backdrop-blur-sm rounded-2xl p-4 border border-cyan-100;
+}
+
+.send-fee-content {
+  @apply flex items-center justify-between;
+}
+
+.send-fee-title {
+  @apply text-sm font-medium text-cyan-800;
+}
+
+.send-fee-subtitle {
+  @apply text-xs text-cyan-600;
+}
+
+.send-fee-amount {
+  @apply text-sm font-medium text-cyan-800;
+}
+
+/* Buttons */
+.send-continue-button {
+  @apply w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all;
+}
+
+.send-button-group {
+  @apply flex gap-3;
+}
+
+.send-back-button {
+  @apply flex-1 bg-gray-100 text-gray-700 rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all;
+}
+
+.send-submit-button {
+  @apply flex-1 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium disabled:opacity-50 active:scale-95 transition-all;
+}
+
+/* Seed Input */
+.send-seed-container {
+  @apply space-y-4;
+}
+
+.send-seed-textarea {
+  @apply w-full h-20 text-sm bg-transparent border-0 outline-0 font-mono placeholder-gray-400 resize-none;
+}
+
+/* Error Display */
+.send-error-card {
+  @apply bg-red-50 border border-red-200 rounded-2xl p-3;
+}
+
+.send-error-text {
+  @apply text-red-800 text-sm;
+}
+
+/* Loading State */
+.send-loading {
+  @apply flex items-center justify-center gap-2;
+}
+
+.send-loading-icon {
+  @apply w-4 h-4 animate-spin;
+}
+
+/* Success State */
+.send-success-container {
+  @apply h-full flex items-center justify-center px-6;
+}
+
+.send-success-content {
+  @apply text-center max-w-sm;
+}
+
+.send-success-icon {
+  @apply w-16 h-16 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-2xl flex items-center justify-center mx-auto mb-4;
+}
+
+.send-success-title {
+  @apply text-lg font-semibold text-gray-900 mb-2;
+}
+
+.send-success-subtitle {
+  @apply text-gray-500 text-sm mb-6;
+}
+
+.send-success-details {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 mb-6 border border-gray-100;
+}
+
+.send-success-details-content {
+  @apply space-y-2 text-sm;
+}
+
+.send-success-row {
+  @apply flex justify-between;
+}
+
+.send-success-label {
+  @apply text-gray-500;
+}
+
+.send-success-value {
+  @apply font-medium;
+}
+
+.send-success-txid {
+  @apply font-mono text-xs;
+}
+
+.send-success-button {
+  @apply w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all;
+}
+
+/* Empty State */
+.send-empty-state {
+  @apply h-full flex items-center justify-center;
+}
+
+.send-empty-content {
+  @apply text-center;
+}
+
+.send-empty-icon {
+  @apply w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3;
+}
+
+.send-empty-text {
+  @apply text-gray-500 text-sm;
+} 

@@ -1,0 +1,199 @@
+/* Home Page Styles */
+
+/* Wallet Selector Card */
+.wallet-selector {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-3 shadow-sm border border-gray-100;
+}
+
+.wallet-selector-button {
+  @apply w-full flex items-center justify-between p-0 text-left hover:bg-gray-50 rounded-xl transition-colors;
+}
+
+.wallet-icon {
+  @apply w-8 h-8 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-full flex items-center justify-center;
+}
+
+/* Balance Card */
+.balance-card {
+  @apply bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-3xl p-6 shadow-lg;
+}
+
+.balance-header {
+  @apply flex items-center gap-2 mb-2;
+}
+
+.balance-label {
+  @apply text-gray-400 text-xs font-medium;
+}
+
+.balance-amount {
+  @apply text-3xl font-bold tracking-tight text-white;
+}
+
+.balance-fiat {
+  @apply text-lg font-bold mt-1 text-gray-300;
+}
+
+.balance-footer {
+  @apply flex justify-between items-end;
+}
+
+.balance-section {
+  @apply text-white text-sm font-bold;
+}
+
+.balance-change {
+  @apply text-sm font-medium;
+}
+
+.balance-change-positive {
+  @apply text-cyan-400;
+}
+
+.balance-change-negative {
+  @apply text-red-400;
+}
+
+/* Bitcoin Price Card */
+.price-card {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-sm border border-gray-100;
+}
+
+.price-header {
+  @apply flex items-center justify-between mb-3;
+}
+
+.price-title {
+  @apply text-sm font-bold text-gray-900;
+}
+
+.price-updated {
+  @apply text-xs text-gray-500;
+}
+
+.price-amount {
+  @apply text-lg font-bold text-gray-900;
+}
+
+.price-change-positive {
+  @apply text-sm font-medium text-green-600;
+}
+
+.price-change-negative {
+  @apply text-sm font-medium text-red-600;
+}
+
+/* Price Chart Visualization */
+.price-chart {
+  @apply h-8 bg-gray-100 rounded-lg overflow-hidden relative;
+}
+
+.price-chart-gradient-positive {
+  @apply h-1 w-full bg-gradient-to-r from-green-200 via-green-400 to-green-600 rounded-full;
+}
+
+.price-chart-gradient-negative {
+  @apply h-1 w-full bg-gradient-to-r from-red-600 via-red-400 to-red-200 rounded-full;
+}
+
+.price-chart-label {
+  @apply text-xs font-medium text-gray-700;
+}
+
+/* Action Buttons */
+.action-buttons {
+  @apply flex gap-3;
+}
+
+.action-button-primary {
+  @apply flex-1 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-14 text-sm font-medium shadow-sm active:scale-95 transition-transform;
+}
+
+.action-button-secondary {
+  @apply flex-1 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-2xl h-14 text-sm font-medium shadow-sm active:scale-95 transition-all;
+}
+
+.action-button-content {
+  @apply flex items-center justify-center gap-2;
+}
+
+/* Recent Transactions */
+.transactions-section {
+  @apply mt-6;
+}
+
+.transactions-header {
+  @apply flex items-center justify-between mb-3 px-1;
+}
+
+.transactions-title {
+  @apply text-gray-900 text-sm font-medium;
+}
+
+.refresh-button {
+  @apply p-1 rounded-lg hover:bg-gray-100 active:scale-95 transition-all;
+}
+
+.refresh-icon {
+  @apply w-4 h-4 text-gray-400 hover:text-gray-600;
+}
+
+.refresh-icon-spinning {
+  @apply animate-spin;
+}
+
+.transactions-list {
+  @apply space-y-2;
+}
+
+.transaction-card {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-3 shadow-sm border border-gray-100;
+}
+
+.transaction-content {
+  @apply flex items-center justify-between;
+}
+
+.transaction-left {
+  @apply flex items-center gap-3;
+}
+
+.transaction-icon-received {
+  @apply w-8 h-8 rounded-full flex items-center justify-center bg-cyan-50;
+}
+
+.transaction-icon-sent {
+  @apply w-8 h-8 rounded-full flex items-center justify-center bg-gray-50;
+}
+
+.transaction-type {
+  @apply font-medium text-gray-900 text-sm capitalize;
+}
+
+.transaction-date {
+  @apply text-xs text-gray-500;
+}
+
+.transaction-amount {
+  @apply font-medium text-gray-900 text-sm;
+}
+
+.transaction-status-completed {
+  @apply text-xs text-cyan-500;
+}
+
+.transaction-status-pending {
+  @apply text-xs text-gray-500;
+}
+
+.no-transactions {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100 text-center;
+}
+
+.no-transactions-title {
+  @apply text-gray-500 text-sm;
+}
+
+.no-transactions-subtitle {
+  @apply text-gray-400 text-xs mt-1;
+} 

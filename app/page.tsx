@@ -1,5 +1,5 @@
-import BitcoinWallet from "@/components/bitcoin-wallet"
+import BitcoinWalletApp from "@/components/BitcoinWalletApp"
 
 export default function Page() {
-  return <BitcoinWallet />
+  return <BitcoinWalletApp />
 }

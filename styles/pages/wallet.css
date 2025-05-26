@@ -1,0 +1,238 @@
+/* Wallet Page Styles */
+
+/* Header */
+.wallet-header {
+  @apply flex justify-between items-center mb-6 px-1;
+}
+
+.wallet-title {
+  @apply text-xl font-semibold text-gray-900;
+}
+
+.wallet-count {
+  @apply text-sm text-gray-500;
+}
+
+.refresh-button {
+  @apply p-2 rounded-xl bg-gray-100 hover:bg-gray-200 active:scale-95 transition-all;
+}
+
+.refresh-icon {
+  @apply w-4 h-4 text-gray-600;
+}
+
+.refresh-icon-spinning {
+  @apply animate-spin;
+}
+
+/* Wallet List */
+.wallet-list {
+  @apply flex-1 overflow-y-auto space-y-3 -mx-4 px-4;
+}
+
+.wallet-card {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border transition-all;
+}
+
+.wallet-card-selected {
+  @apply border-cyan-200 bg-cyan-50/80;
+}
+
+.wallet-card-default {
+  @apply border-gray-100 hover:border-gray-200;
+}
+
+.wallet-button {
+  @apply w-full p-4 text-left;
+}
+
+.wallet-content {
+  @apply flex items-center justify-between;
+}
+
+.wallet-left {
+  @apply flex items-center gap-3;
+}
+
+.wallet-icon {
+  @apply w-10 h-10 rounded-full flex items-center justify-center;
+}
+
+.wallet-icon-selected {
+  @apply bg-gradient-to-br from-cyan-100 to-cyan-200;
+}
+
+.wallet-icon-default {
+  @apply bg-gradient-to-br from-gray-100 to-gray-200;
+}
+
+.wallet-icon-symbol-selected {
+  @apply w-5 h-5 text-cyan-600;
+}
+
+.wallet-icon-symbol-default {
+  @apply w-5 h-5 text-gray-600;
+}
+
+.wallet-name {
+  @apply font-medium text-gray-900;
+}
+
+.wallet-balance {
+  @apply text-sm text-gray-500 font-bold;
+}
+
+.wallet-fiat {
+  @apply text-xs text-gray-400;
+}
+
+.wallet-right {
+  @apply text-right;
+}
+
+.wallet-network {
+  @apply text-xs text-gray-500 capitalize;
+}
+
+.wallet-transactions {
+  @apply text-xs text-gray-400;
+}
+
+.wallet-selected-indicator {
+  @apply w-2 h-2 bg-cyan-500 rounded-full mt-1 ml-auto;
+}
+
+/* Export Button */
+.export-button-container {
+  @apply px-4 pb-4;
+}
+
+.export-button {
+  @apply w-full bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl py-2 text-xs font-medium active:scale-95 transition-all;
+}
+
+.export-button-content {
+  @apply flex items-center justify-center gap-2;
+}
+
+.export-button-icon {
+  @apply w-3 h-3;
+}
+
+/* Empty State */
+.empty-state {
+  @apply text-center py-12;
+}
+
+.empty-state-icon {
+  @apply w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4;
+}
+
+.empty-state-title {
+  @apply text-lg font-medium text-gray-900 mb-2;
+}
+
+.empty-state-description {
+  @apply text-gray-500 text-sm mb-6;
+}
+
+/* Add Wallet Button */
+.add-wallet-container {
+  @apply pt-4 mt-4 border-t border-gray-100;
+}
+
+.add-wallet-button {
+  @apply w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium shadow-sm active:scale-95 transition-transform;
+}
+
+.add-wallet-button-content {
+  @apply flex items-center justify-center gap-2;
+}
+
+.add-wallet-button-icon {
+  @apply w-4 h-4;
+}
+
+/* Export Modal */
+.export-modal-overlay {
+  @apply fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4;
+}
+
+.export-modal {
+  @apply bg-white rounded-3xl max-w-sm w-full max-h-[80vh] overflow-y-auto;
+}
+
+.export-modal-content {
+  @apply p-6;
+}
+
+.export-modal-header {
+  @apply flex justify-between items-center mb-6;
+}
+
+.export-modal-title {
+  @apply text-lg font-semibold;
+}
+
+.export-modal-close {
+  @apply w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center;
+}
+
+.export-modal-close-icon {
+  @apply text-gray-600;
+}
+
+/* Security Warning */
+.security-warning {
+  @apply bg-red-50 border border-red-200 rounded-2xl p-4 mb-6;
+}
+
+.security-warning-text {
+  @apply text-red-800 text-sm;
+}
+
+/* Form Elements */
+.export-form {
+  @apply space-y-4;
+}
+
+.export-label {
+  @apply text-sm font-medium text-gray-700 block mb-2;
+}
+
+.export-textarea {
+  @apply w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent font-mono resize-none;
+}
+
+.export-button-primary {
+  @apply w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium disabled:opacity-50 active:scale-95 transition-all;
+}
+
+.export-button-secondary {
+  @apply w-full bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all;
+}
+
+.export-loading {
+  @apply flex items-center justify-center gap-2;
+}
+
+.export-loading-icon {
+  @apply w-4 h-4 animate-spin;
+}
+
+/* Private Key Display */
+.private-key-container {
+  @apply space-y-4;
+}
+
+.private-key-display {
+  @apply bg-gray-50 border border-gray-200 rounded-xl p-3 font-mono text-xs break-all;
+}
+
+.copy-button-content {
+  @apply flex items-center justify-center gap-2;
+}
+
+.copy-button-icon {
+  @apply w-4 h-4;
+} 

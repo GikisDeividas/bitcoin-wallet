@@ -1,0 +1,154 @@
+/* Receive Page Styles */
+
+/* Wallet Info Card */
+.receive-wallet-info {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 mb-4 border border-gray-100;
+}
+
+.receive-wallet-content {
+  @apply flex items-center justify-between;
+}
+
+.receive-wallet-name {
+  @apply text-sm font-medium text-gray-900;
+}
+
+.receive-wallet-network {
+  @apply text-xs text-gray-500 capitalize;
+}
+
+.receive-wallet-balance {
+  @apply text-sm font-medium text-gray-900;
+}
+
+.receive-wallet-label {
+  @apply text-xs text-gray-500;
+}
+
+/* QR Code Section */
+.receive-qr-container {
+  @apply flex-1 flex items-center justify-center mb-4;
+}
+
+.receive-qr-card {
+  @apply bg-white/80 backdrop-blur-sm rounded-3xl p-8 border border-gray-100 text-center max-w-sm w-full;
+}
+
+.receive-qr-placeholder {
+  @apply w-48 h-48 bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl mx-auto mb-6 flex items-center justify-center border-2 border-dashed border-gray-200;
+}
+
+.receive-qr-content {
+  @apply text-center;
+}
+
+.receive-qr-icon {
+  @apply w-16 h-16 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-2xl flex items-center justify-center mx-auto mb-3;
+}
+
+.receive-qr-grid {
+  @apply grid grid-cols-3 gap-1;
+}
+
+.receive-qr-dot {
+  @apply w-2 h-2 rounded-sm;
+}
+
+.receive-qr-dot-filled {
+  @apply bg-cyan-600;
+}
+
+.receive-qr-dot-empty {
+  @apply bg-cyan-200;
+}
+
+.receive-qr-label {
+  @apply text-xs text-gray-500;
+}
+
+.receive-qr-title {
+  @apply text-lg font-semibold text-gray-900 mb-2;
+}
+
+.receive-qr-subtitle {
+  @apply text-gray-500 text-sm mb-6;
+}
+
+/* Address Section */
+.receive-address-container {
+  @apply space-y-3;
+}
+
+.receive-address-card {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100;
+}
+
+.receive-address-label {
+  @apply text-sm font-medium text-gray-700 block mb-3;
+}
+
+.receive-address-display {
+  @apply bg-gray-50 rounded-xl p-3 mb-3;
+}
+
+.receive-address-text {
+  @apply font-mono text-sm break-all text-gray-900;
+}
+
+.receive-copy-button {
+  @apply w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all;
+}
+
+.receive-copy-content {
+  @apply flex items-center justify-center gap-2;
+}
+
+.receive-copy-icon {
+  @apply w-4 h-4;
+}
+
+/* Info Card */
+.receive-info-card {
+  @apply bg-cyan-50/80 backdrop-blur-sm rounded-2xl p-4 border border-cyan-100;
+}
+
+.receive-info-content {
+  @apply flex items-start gap-3;
+}
+
+.receive-info-icon {
+  @apply w-6 h-6 bg-cyan-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5;
+}
+
+.receive-info-icon-text {
+  @apply text-cyan-600 text-xs font-bold;
+}
+
+.receive-info-text {
+  @apply space-y-1;
+}
+
+.receive-info-title {
+  @apply text-cyan-800 text-sm font-medium;
+}
+
+.receive-info-list {
+  @apply text-cyan-700 text-xs space-y-1;
+}
+
+/* Empty State */
+.receive-empty-state {
+  @apply h-full flex items-center justify-center;
+}
+
+.receive-empty-content {
+  @apply text-center;
+}
+
+.receive-empty-icon {
+  @apply w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3;
+}
+
+.receive-empty-text {
+  @apply text-gray-500 text-sm;
+} 

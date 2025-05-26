@@ -1,0 +1,221 @@
+/* Settings Page Styles */
+
+/* Main Container */
+.settings-container {
+  @apply h-full overflow-y-auto space-y-3;
+}
+
+/* Section Cards */
+.settings-section {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100;
+}
+
+.settings-section-content {
+  @apply p-4;
+}
+
+.settings-section-title {
+  @apply font-medium text-gray-900 mb-4;
+}
+
+/* Setting Items */
+.settings-items {
+  @apply space-y-4;
+}
+
+.settings-item {
+  @apply flex items-center justify-between;
+}
+
+.settings-item-info {
+  @apply space-y-1;
+}
+
+.settings-item-title {
+  @apply text-sm font-medium text-gray-700;
+}
+
+.settings-item-subtitle {
+  @apply text-xs text-gray-500;
+}
+
+/* Toggle Switch */
+.settings-toggle {
+  @apply w-12 h-6 rounded-full transition-all;
+}
+
+.settings-toggle-active {
+  @apply bg-cyan-500;
+}
+
+.settings-toggle-inactive {
+  @apply bg-gray-200;
+}
+
+.settings-toggle-slider {
+  @apply w-5 h-5 rounded-full bg-white transition-transform;
+}
+
+.settings-toggle-slider-active {
+  @apply translate-x-6;
+}
+
+.settings-toggle-slider-inactive {
+  @apply translate-x-0.5;
+}
+
+/* Select Dropdown */
+.settings-select-container {
+  @apply space-y-2;
+}
+
+.settings-select-label {
+  @apply text-sm font-medium text-gray-700 block mb-2;
+}
+
+.settings-select {
+  @apply w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-white;
+}
+
+.settings-select-help {
+  @apply text-xs text-gray-500 mt-1;
+}
+
+/* Advanced Section */
+.settings-advanced-header {
+  @apply w-full flex items-center justify-between text-left;
+}
+
+.settings-advanced-title {
+  @apply font-medium text-gray-900;
+}
+
+.settings-advanced-chevron {
+  @apply w-4 h-4 text-gray-400 transition-transform;
+}
+
+.settings-advanced-chevron-open {
+  @apply rotate-90;
+}
+
+.settings-advanced-content {
+  @apply mt-4 space-y-4 border-t border-gray-100 pt-4;
+}
+
+/* Action Buttons */
+.settings-actions {
+  @apply space-y-2;
+}
+
+.settings-action-button {
+  @apply w-full rounded-xl p-3 text-sm font-medium active:scale-95 transition-all text-left;
+}
+
+.settings-action-button-normal {
+  @apply bg-gray-50 hover:bg-gray-100 text-gray-700;
+}
+
+.settings-action-button-danger {
+  @apply bg-red-50 hover:bg-red-100 text-red-600;
+}
+
+.settings-action-content {
+  @apply flex items-center gap-2;
+}
+
+.settings-action-icon {
+  @apply w-4 h-4;
+}
+
+/* About Section */
+.settings-about {
+  @apply flex justify-between items-center;
+}
+
+.settings-about-info {
+  @apply space-y-1;
+}
+
+.settings-about-title {
+  @apply text-sm font-medium text-gray-900;
+}
+
+.settings-about-version {
+  @apply text-xs text-gray-500;
+}
+
+.settings-about-icon {
+  @apply w-8 h-8 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-full flex items-center justify-center;
+}
+
+.settings-about-emoji {
+  @apply text-cyan-600 text-xs;
+}
+
+/* Export Modal */
+.settings-modal-overlay {
+  @apply fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4;
+}
+
+.settings-modal {
+  @apply bg-white rounded-3xl max-w-sm w-full max-h-[80vh] overflow-y-auto;
+}
+
+.settings-modal-content {
+  @apply p-6;
+}
+
+.settings-modal-header {
+  @apply flex justify-between items-center mb-4;
+}
+
+.settings-modal-title {
+  @apply text-lg font-semibold;
+}
+
+.settings-modal-close {
+  @apply w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center;
+}
+
+.settings-modal-close-icon {
+  @apply text-gray-600;
+}
+
+/* Modal Form */
+.settings-modal-form {
+  @apply space-y-4;
+}
+
+.settings-modal-textarea {
+  @apply w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 font-mono resize-none;
+}
+
+.settings-modal-button-primary {
+  @apply w-full bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl h-12 text-sm font-medium disabled:opacity-50 active:scale-95 transition-all;
+}
+
+.settings-modal-button-secondary {
+  @apply w-full bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-2xl h-12 text-sm font-medium active:scale-95 transition-all;
+}
+
+/* Loading State */
+.settings-loading {
+  @apply flex items-center justify-center gap-2;
+}
+
+.settings-loading-icon {
+  @apply w-4 h-4 animate-spin;
+}
+
+/* Key Display */
+.settings-key-display {
+  @apply bg-gray-50 border border-gray-200 rounded-xl p-3 font-mono text-xs break-all max-h-32 overflow-y-auto;
+}
+
+.settings-copy-content {
+  @apply flex items-center justify-center gap-2;
+}
+
+.settings-copy-icon {
+  @apply w-4 h-4;
+} 

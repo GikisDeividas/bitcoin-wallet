@@ -1,0 +1,154 @@
+/* Swap Page Styles */
+
+/* Main Container */
+.swap-container {
+  @apply h-full flex flex-col;
+}
+
+/* Wallet Info Card */
+.swap-wallet-info {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 mb-4 border border-gray-100;
+}
+
+.swap-wallet-content {
+  @apply flex items-center justify-between;
+}
+
+.swap-wallet-name {
+  @apply text-sm font-medium text-gray-900;
+}
+
+.swap-wallet-balance {
+  @apply text-xs text-gray-500;
+}
+
+.swap-wallet-fiat {
+  @apply text-sm font-medium text-gray-900;
+}
+
+.swap-wallet-label {
+  @apply text-xs text-gray-500;
+}
+
+/* Swap Interface */
+.swap-interface {
+  @apply flex-1 space-y-4;
+}
+
+/* Currency Cards */
+.swap-currency-card {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100;
+}
+
+.swap-currency-header {
+  @apply flex items-center justify-between mb-3;
+}
+
+.swap-currency-label {
+  @apply text-sm font-medium text-gray-700;
+}
+
+.swap-currency-select {
+  @apply text-sm font-medium text-gray-900 bg-transparent border-0 outline-0;
+}
+
+.swap-amount-input {
+  @apply w-full text-2xl font-bold bg-transparent border-0 outline-0 placeholder-gray-400;
+}
+
+.swap-conversion-info {
+  @apply text-xs text-gray-500 mt-2;
+}
+
+/* Swap Button */
+.swap-button-container {
+  @apply flex justify-center;
+}
+
+.swap-button {
+  @apply w-12 h-12 bg-cyan-100 hover:bg-cyan-200 rounded-full flex items-center justify-center active:scale-95 transition-all;
+}
+
+.swap-button-icon {
+  @apply w-5 h-5 text-cyan-600;
+}
+
+/* Exchange Rate Card */
+.swap-rate-card {
+  @apply bg-cyan-50/80 backdrop-blur-sm rounded-2xl p-4 border border-cyan-100;
+}
+
+.swap-rate-content {
+  @apply flex items-center justify-between;
+}
+
+.swap-rate-left {
+  @apply flex items-center gap-2;
+}
+
+.swap-rate-icon {
+  @apply w-4 h-4 text-cyan-600;
+}
+
+.swap-rate-label {
+  @apply text-sm font-medium text-cyan-800;
+}
+
+.swap-rate-value {
+  @apply text-sm font-medium text-cyan-800;
+}
+
+/* Coming Soon Notice */
+.swap-coming-soon {
+  @apply bg-yellow-50/80 backdrop-blur-sm rounded-2xl p-4 border border-yellow-100;
+}
+
+.swap-coming-soon-content {
+  @apply flex items-start gap-3;
+}
+
+.swap-coming-soon-icon {
+  @apply w-6 h-6 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5;
+}
+
+.swap-coming-soon-icon-symbol {
+  @apply w-4 h-4 text-yellow-600;
+}
+
+.swap-coming-soon-title {
+  @apply text-yellow-800 text-sm font-medium mb-1;
+}
+
+.swap-coming-soon-features {
+  @apply text-yellow-700 text-xs space-y-1;
+}
+
+/* Disabled Button */
+.swap-disabled-button {
+  @apply w-full bg-gray-200 text-gray-500 rounded-2xl h-12 text-sm font-medium cursor-not-allowed;
+}
+
+.swap-disabled-content {
+  @apply flex items-center justify-center gap-2;
+}
+
+.swap-disabled-icon {
+  @apply w-4 h-4;
+}
+
+/* Empty State */
+.swap-empty-state {
+  @apply h-full flex items-center justify-center;
+}
+
+.swap-empty-content {
+  @apply text-center;
+}
+
+.swap-empty-icon {
+  @apply w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3;
+}
+
+.swap-empty-text {
+  @apply text-gray-500 text-sm;
+} 

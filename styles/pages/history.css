@@ -1,0 +1,211 @@
+/* History Page Styles */
+
+/* Main Container */
+.history-container {
+  @apply h-full flex flex-col;
+}
+
+/* Header Section */
+.history-header {
+  @apply space-y-4 mb-4;
+}
+
+/* Wallet Selector */
+.history-wallet-selector {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100;
+}
+
+.history-wallet-label {
+  @apply text-sm font-medium text-gray-700 block mb-2;
+}
+
+.history-wallet-select {
+  @apply w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-white;
+}
+
+/* Filter Section */
+.history-filter-row {
+  @apply flex gap-3;
+}
+
+.history-filter-container {
+  @apply flex-1 bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100;
+}
+
+.history-filter-header {
+  @apply flex items-center gap-2 mb-2;
+}
+
+.history-filter-icon {
+  @apply w-4 h-4 text-gray-500;
+}
+
+.history-filter-title {
+  @apply text-sm font-medium text-gray-700;
+}
+
+.history-filter-buttons {
+  @apply flex bg-gray-100 rounded-lg p-1;
+}
+
+.history-filter-button {
+  @apply flex-1 px-3 py-1 text-xs font-medium rounded;
+}
+
+.history-filter-button-active {
+  @apply bg-white text-gray-900 shadow-sm;
+}
+
+.history-filter-button-inactive {
+  @apply text-gray-500;
+}
+
+/* Refresh Button */
+.history-refresh-button {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100 active:scale-95 transition-all;
+}
+
+.history-refresh-icon {
+  @apply w-4 h-4 text-gray-600;
+}
+
+.history-refresh-icon-spinning {
+  @apply animate-spin;
+}
+
+/* Search Section */
+.history-search-container {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-100;
+}
+
+.history-search-header {
+  @apply flex items-center gap-2 mb-2;
+}
+
+.history-search-icon {
+  @apply w-4 h-4 text-gray-500;
+}
+
+.history-search-title {
+  @apply text-sm font-medium text-gray-700;
+}
+
+.history-search-input {
+  @apply w-full text-sm bg-transparent border-0 outline-0 placeholder-gray-400;
+}
+
+/* Transaction List */
+.history-transaction-list {
+  @apply flex-1 overflow-y-auto space-y-2;
+}
+
+.history-transaction-card {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-sm border border-gray-100;
+}
+
+.history-transaction-header {
+  @apply flex items-center justify-between mb-2;
+}
+
+.history-transaction-left {
+  @apply flex items-center gap-3;
+}
+
+.history-transaction-icon {
+  @apply w-10 h-10 rounded-full flex items-center justify-center;
+}
+
+.history-transaction-icon-received {
+  @apply bg-cyan-50;
+}
+
+.history-transaction-icon-sent {
+  @apply bg-gray-50;
+}
+
+.history-transaction-icon-symbol-received {
+  @apply w-5 h-5 text-cyan-600;
+}
+
+.history-transaction-icon-symbol-sent {
+  @apply w-5 h-5 text-gray-600;
+}
+
+.history-transaction-type {
+  @apply font-medium text-gray-900 text-sm capitalize;
+}
+
+.history-transaction-wallet {
+  @apply text-xs text-gray-500;
+}
+
+.history-transaction-right {
+  @apply text-right;
+}
+
+.history-transaction-amount {
+  @apply font-medium text-gray-900 text-sm;
+}
+
+.history-transaction-fiat {
+  @apply text-xs text-gray-500;
+}
+
+/* Transaction Details */
+.history-transaction-details {
+  @apply space-y-1 text-xs text-gray-500;
+}
+
+.history-transaction-detail-row {
+  @apply flex justify-between;
+}
+
+.history-transaction-detail-label {
+  @apply text-gray-500;
+}
+
+.history-transaction-detail-value {
+  @apply font-mono;
+}
+
+.history-transaction-status-completed {
+  @apply text-cyan-500;
+}
+
+.history-transaction-status-pending {
+  @apply text-gray-500;
+}
+
+/* Empty State */
+.history-empty-state {
+  @apply bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-sm border border-gray-100 text-center;
+}
+
+.history-empty-icon {
+  @apply w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3;
+}
+
+.history-empty-title {
+  @apply text-gray-500 text-sm;
+}
+
+.history-empty-subtitle {
+  @apply text-gray-400 text-xs mt-1;
+}
+
+/* No Wallets State */
+.history-no-wallets {
+  @apply h-full flex items-center justify-center;
+}
+
+.history-no-wallets-content {
+  @apply text-center;
+}
+
+.history-no-wallets-icon {
+  @apply w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3;
+}
+
+.history-no-wallets-text {
+  @apply text-gray-500 text-sm;
+} 
